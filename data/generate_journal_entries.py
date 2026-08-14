@@ -54,6 +54,14 @@ ERROR_RATE = 0.03          # ~3% of journal entries (headers) are seeded errors
 N_EMPLOYEES = 40
 N_ACCOUNTS = 27
 
+# backdated / bank-feed error rates, same 0.003-0.009 scale as ERROR_MIX below.
+# Kept separate from ERROR_MIX because they don't seed off the same
+# header-pool mechanism (backdated overrides a column rather than mutating a
+# header, unmatched_bank operates on bank_transactions rows, not headers).
+BACKDATED_RATE = 0.006
+UNMATCHED_LEDGER_RATE = 0.006   # fraction of ledger cash lines with no bank counterpart
+UNMATCHED_PHANTOM_RATE = 0.006  # phantom bank rows, as a fraction of cash-line count
+
 rng = np.random.default_rng(RNG_SEED)
 
 
@@ -223,6 +231,78 @@ CATEGORIES = {
     "manual_gl":       dict(weight=0.06, debit=list(), credit=list(),  # filled from full account list below
                              mu=7.0, sigma=1.8, month_end_only=False, dept="GL"),
 }
+
+
+# ============================================================================
+# Bank feed: counterparty pools and reference-messifying.
+# The bank feed mirrors ledger cash movements (see generate_bank_transactions)
+# but is generated as text a real payment rail would produce - abbreviated,
+# inconsistently cased, sometimes truncated or missing the JE number entirely.
+# That's deliberate: CLAUDE.md's Python tool rules call for rapidfuzz fuzzy
+# matching later, and an exact-match join against these references should
+# fail on most rows, or the fuzzy-matching step would have nothing to do.
+# ============================================================================
+VENDOR_NAMES = [
+    "Acme Supplies Ltd", "Globex Materials", "Initech Consulting",
+    "Umbrella Logistics", "Stark Industrial", "Wayne Facilities Group",
+    "Wonka Packaging Co", "Hooli Office Solutions", "Soylent Catering",
+    "Vandelay Import Export", "Massive Dynamic Supply", "Gringotts Business Services",
+]
+CUSTOMER_NAMES = [
+    "Northwind Traders", "Contoso Retail", "Fabrikam Inc", "Tailspin Toys",
+    "Adventure Works", "Blue Yonder Airlines", "Litware Systems",
+    "Proseware Manufacturing", "City Power & Gas", "Trey Research",
+]
+PAYROLL_PROVIDER = "ADP Payroll Services"
+
+# Recognizable words a bank feed would routinely abbreviate.
+ABBREVIATIONS = {
+    "PAYMENT": "PMT", "PAYROLL": "PYRL", "INVOICE": "INV", "SERVICES": "SVCS",
+    "SUPPLIES": "SUPP", "RECEIPT": "RCPT", "TRANSFER": "TRF", "CUSTOMER": "CUST",
+    "VENDOR": "VEND", "CORPORATION": "CORP", "LIMITED": "LTD", "COMPANY": "CO",
+    "INTERNATIONAL": "INTL", "LOGISTICS": "LOG", "SOLUTIONS": "SOL",
+    "CONSULTING": "CONSULT", "MATERIALS": "MATL", "INDUSTRIAL": "IND",
+    "FACILITIES": "FAC", "PACKAGING": "PKG", "CATERING": "CATER",
+    "IMPORT": "IMP", "EXPORT": "EXP", "MANAGEMENT": "MGMT",
+}
+
+
+def messify_reference(clean_ref: str, rng_local) -> str:
+    """Turns a clean 'LABEL JE-000123 Counterparty Name' string into
+    something a bank feed would actually produce: some words abbreviated,
+    the JE number dropped fairly often (missing invoice/reference number),
+    two adjacent words occasionally transposed, inconsistent casing, and
+    sometimes truncated (field-length cutoff). Each transformation is
+    independently randomized so the output isn't one fixed pattern an
+    exact-match join could special-case around."""
+    words = clean_ref.split()
+
+    words = [ABBREVIATIONS.get(w.upper(), w) if rng_local.random() < 0.5 else w
+             for w in words]
+
+    if rng_local.random() < 0.45:
+        words = [w for w in words if not w.upper().startswith("JE-")]
+
+    if len(words) >= 2 and rng_local.random() < 0.15:
+        i = int(rng_local.integers(0, len(words) - 1))
+        words[i], words[i + 1] = words[i + 1], words[i]
+
+    ref = " ".join(words)
+
+    case_roll = rng_local.random()
+    if case_roll < 0.35:
+        ref = ref.upper()
+    elif case_roll < 0.6:
+        ref = ref.lower()
+    elif case_roll < 0.8:
+        ref = ref.title()
+    # else: leave title/mixed as built - some real feed rows come through clean-ish
+
+    if rng_local.random() < 0.4 and len(ref) > 10:
+        cut = int(len(ref) * rng_local.uniform(0.6, 0.9))
+        ref = ref[:cut].rstrip()
+
+    return ref[:140]
 
 
 def build_pairing_pools(accounts: pd.DataFrame) -> None:
@@ -680,9 +760,188 @@ def seed_errors(headers_df, lines_df, next_header_id, next_line_id, account_by_i
 
 
 # ============================================================================
+# Backdated error: transaction_date vs. posting_datetime.
+#
+# transaction_date models the standard accounting distinction between when a
+# transaction actually happened and when it hit the GL. Every header gets a
+# small baseline lag - that's normal processing delay, not an anomaly. A
+# seeded subset instead gets its lag redrawn from a long-tailed lognormal:
+# most of those still land in the same 0-2 day range as the baseline
+# (indistinguishable from normal -> hard), a shrinking share land 3-9 days
+# out (medium), and a tail reaches 10-180 days (easy). Overlapping the low
+# end with the baseline is deliberate - a rule as simple as "lag > 0 ->
+# anomaly" would violate CLAUDE.md's requirement that detectability vary.
+# ============================================================================
+def seed_backdated_errors(headers_df: pd.DataFrame, gt_df: pd.DataFrame, rng_local):
+    n = len(headers_df)
+    headers_df = headers_df.copy()
+
+    baseline_lag = rng_local.poisson(0.4, size=n)  # mean 0.4d: mostly 0, some 1-2
+    post_dates = pd.to_datetime(headers_df["posting_datetime"]).dt.normalize()
+    headers_df["transaction_date"] = (post_dates - pd.to_timedelta(baseline_lag, unit="D")).dt.date
+
+    # Eligible pool: not already carrying a ground_truth label, not a
+    # reversal, not the original a reversal points back at - same
+    # non-overlap discipline as seed_errors' `eligible` pool.
+    already_flagged = set(gt_df["header_id"].dropna().astype(int))
+    reversed_original_ids = set(headers_df["reversed_header_id"].dropna().astype(int))
+    eligible = headers_df[
+        (~headers_df["is_reversal"])
+        & (~headers_df["header_id"].isin(reversed_original_ids))
+        & (~headers_df["header_id"].isin(already_flagged))
+    ]["header_id"].to_numpy()
+    rng_local.shuffle(eligible)
+
+    n_backdated = int(round(BACKDATED_RATE * n))
+    targets = eligible[:n_backdated]
+    long_tail_lag = np.round(rng_local.lognormal(mean=0.35, sigma=1.3, size=len(targets))).astype(int)
+    long_tail_lag = np.clip(long_tail_lag, 0, 180)
+
+    override = pd.DataFrame({"header_id": targets, "lag": long_tail_lag})
+    headers_df = headers_df.merge(override, on="header_id", how="left")
+    mask = headers_df["lag"].notna()
+    headers_df.loc[mask, "transaction_date"] = (
+        pd.to_datetime(headers_df.loc[mask, "posting_datetime"]).dt.normalize()
+        - pd.to_timedelta(headers_df.loc[mask, "lag"], unit="D")
+    ).dt.date
+
+    detail = override.merge(headers_df[["header_id", "posting_datetime"]], on="header_id")
+    gt_rows = []
+    for _, r in detail.iterrows():
+        lag = int(r["lag"])
+        detectability = "easy" if lag >= 10 else ("medium" if lag >= 3 else "hard")
+        gt_rows.append(dict(
+            header_id=int(r["header_id"]), line_id=None, bank_txn_id=None,
+            error_type="backdated", detectability=detectability,
+            notes=f"Transaction dated {lag}d before posting (posted {r['posting_datetime']:%Y-%m-%d})",
+        ))
+
+    headers_df = headers_df.drop(columns=["lag"]).sort_values("header_id").reset_index(drop=True)
+    backdated_gt = pd.DataFrame(gt_rows).astype(
+        {"header_id": "Int64", "line_id": "Int64", "bank_txn_id": "Int64"}
+    )
+    return headers_df, backdated_gt
+
+
+# ============================================================================
+# Bank feed: mirrors ledger cash movements, plus seeded unmatched_bank errors.
+# ============================================================================
+def generate_bank_transactions(headers_df: pd.DataFrame, lines_df: pd.DataFrame,
+                                accounts: pd.DataFrame, rng_local) -> pd.DataFrame:
+    """One bank_transactions row per journal_line that hits a cash account.
+    Kept as plain columns with no ledger FK (see schema comment) - the
+    _ledger_header_id/_ledger_line_id columns here are internal bookkeeping
+    only, used by seed_unmatched_bank_errors to label ground truth, and are
+    dropped before the table is loaded to Postgres."""
+    cash_keys = set(accounts.loc[accounts["is_cash_account"], "account_key"])
+    payroll_key = int(accounts.loc[accounts["account_id"] == "1010", "account_key"].iloc[0])
+
+    cash_lines = lines_df[lines_df["account_key"].isin(cash_keys)].merge(
+        headers_df[["header_id", "header_id_text", "posting_datetime"]], on="header_id"
+    )
+
+    rows = []
+    bank_txn_id = 1
+    for _, l in cash_lines.iterrows():
+        if l["debit_amount"] > 0:
+            amount = float(l["debit_amount"])
+            counterparty = str(rng_local.choice(CUSTOMER_NAMES))
+            label = "CUSTOMER RECEIPT"
+        else:
+            amount = -float(l["credit_amount"])
+            if l["account_key"] == payroll_key:
+                counterparty = PAYROLL_PROVIDER
+                label = "PAYROLL TRANSFER"
+            else:
+                counterparty = str(rng_local.choice(VENDOR_NAMES))
+                label = "VENDOR PAYMENT"
+
+        clean_ref = f"{label} {l['header_id_text']} {counterparty}"
+        # Clearing lag: bank posts 0-3 days after the ledger entry.
+        value_date = (l["posting_datetime"] + timedelta(days=int(rng_local.integers(0, 4)))).date()
+
+        rows.append({
+            "bank_txn_id": bank_txn_id, "value_date": value_date, "amount": round(amount, 2),
+            "reference": messify_reference(clean_ref, rng_local), "counterparty": counterparty,
+            "_ledger_header_id": int(l["header_id"]), "_ledger_line_id": int(l["line_id"]),
+        })
+        bank_txn_id += 1
+
+    return pd.DataFrame(rows)
+
+
+def seed_unmatched_bank_errors(bank_df: pd.DataFrame, rng_local):
+    """Seeds unmatched_bank in both directions: ledger-side orphans (drop the
+    bank mirror of a real cash line - payment stuck in a suspense account,
+    feed drop) and bank-side orphans (phantom rows - bank fees, interest,
+    a payment the GL never recorded). detectability scales with dollar size:
+    a large unmatched item is easy to spot on a bank rec; a small one is
+    easy to miss, which is exactly the mixed-difficulty CLAUDE.md asks for."""
+    n_cash_lines = len(bank_df)
+    gt_rows = []
+
+    n_drop = int(round(UNMATCHED_LEDGER_RATE * n_cash_lines))
+    drop_idx = rng_local.choice(bank_df.index.values, size=n_drop, replace=False)
+    dropped = bank_df.loc[drop_idx]
+    bank_df = bank_df.drop(index=drop_idx).reset_index(drop=True)
+
+    if len(dropped):
+        terciles = dropped["amount"].abs().quantile([1 / 3, 2 / 3]).values
+        for _, r in dropped.iterrows():
+            a = abs(r["amount"])
+            detectability = "easy" if a >= terciles[1] else ("medium" if a >= terciles[0] else "hard")
+            gt_rows.append(dict(
+                header_id=int(r["_ledger_header_id"]), line_id=int(r["_ledger_line_id"]), bank_txn_id=None,
+                error_type="unmatched_bank", detectability=detectability,
+                notes=f"Ledger cash line ${a:,.2f} has no bank feed counterpart",
+            ))
+
+    # Phantom bank rows: no ledger line behind them at all.
+    n_phantom = int(round(UNMATCHED_PHANTOM_RATE * n_cash_lines))
+    span_start = pd.to_datetime(bank_df["value_date"]).min()
+    span_end = pd.to_datetime(bank_df["value_date"]).max()
+    span_days = max((span_end - span_start).days, 1)
+    next_id = int(bank_df["bank_txn_id"].max()) + 1 if len(bank_df) else 1
+
+    phantom_rows = []
+    for _ in range(n_phantom):
+        is_fee = rng_local.random() < 0.5
+        if is_fee:
+            amount = -round(float(rng_local.uniform(5, 250)), 2)
+            counterparty = "Bank Fees & Charges"
+            clean_ref = f"BANK CHARGE {counterparty}"
+        else:
+            amount = round(float(rng_local.uniform(50, 5000)), 2)
+            counterparty = str(rng_local.choice(VENDOR_NAMES + CUSTOMER_NAMES))
+            clean_ref = f"MISC TRANSFER {counterparty}"
+        value_date = (span_start + timedelta(days=int(rng_local.integers(0, span_days + 1)))).date()
+
+        phantom_rows.append({
+            "bank_txn_id": next_id, "value_date": value_date, "amount": amount,
+            "reference": messify_reference(clean_ref, rng_local), "counterparty": counterparty,
+            "_ledger_header_id": None, "_ledger_line_id": None,
+        })
+        detectability = "easy" if abs(amount) >= 1000 else ("medium" if abs(amount) >= 100 else "hard")
+        gt_rows.append(dict(
+            header_id=None, line_id=None, bank_txn_id=next_id,
+            error_type="unmatched_bank", detectability=detectability,
+            notes=f"Bank feed row ${abs(amount):,.2f} has no ledger counterpart",
+        ))
+        next_id += 1
+
+    bank_df = pd.concat([bank_df, pd.DataFrame(phantom_rows)], ignore_index=True)
+    bank_df = bank_df.sort_values("value_date").reset_index(drop=True)
+
+    unmatched_gt = pd.DataFrame(gt_rows).astype(
+        {"header_id": "Int64", "line_id": "Int64", "bank_txn_id": "Int64"}
+    )
+    return bank_df, unmatched_gt
+
+
+# ============================================================================
 # Validation
 # ============================================================================
-def validate(headers_df, lines_df, gt_df):
+def validate(headers_df, lines_df, gt_df, bank_df):
     print(f"headers: {len(headers_df):,}")
     print(f"lines:   {len(lines_df):,}  (target ~{TARGET_LINES:,})")
     print(f"ground_truth rows: {len(gt_df):,} "
@@ -706,6 +965,20 @@ def validate(headers_df, lines_df, gt_df):
     business = hours.between(8, 18).mean()
     print(f"\nshare of postings within 08:00-18:00: {business:.1%}")
 
+    lag_days = (pd.to_datetime(headers_df["posting_datetime"]).dt.normalize()
+                - pd.to_datetime(headers_df["transaction_date"])).dt.days
+    print(f"\ntransaction_date lag (posting - transaction), days: "
+          f"median={lag_days.median():.1f}, mean={lag_days.mean():.2f}, "
+          f"p95={lag_days.quantile(.95):.1f}, p99={lag_days.quantile(.99):.1f}, max={lag_days.max()}")
+    print(f"seeded 'backdated' count: {(gt_df['error_type'] == 'backdated').sum()}")
+
+    print(f"\nbank_transactions: {len(bank_df):,}")
+    unmatched = gt_df[gt_df["error_type"] == "unmatched_bank"]
+    n_ledger_orphan = unmatched["bank_txn_id"].isna().sum()
+    n_bank_orphan = unmatched["header_id"].isna().sum()
+    print(f"unmatched_bank ground truth: {n_ledger_orphan} ledger-side orphans "
+          f"(no bank line), {n_bank_orphan} bank-side orphans (phantom rows)")
+
 
 # ============================================================================
 # Postgres load
@@ -720,7 +993,7 @@ def copy_df(cur, df: pd.DataFrame, table: str, columns: list):
     )
 
 
-def load_to_postgres(dim_date, accounts, employees, headers_df, lines_df, gt_df):
+def load_to_postgres(dim_date, accounts, employees, headers_df, lines_df, gt_df, bank_df):
     if psycopg2 is None:
         print("psycopg2 not installed in this interpreter - cannot load to Postgres.", file=sys.stderr)
         sys.exit(1)
@@ -739,20 +1012,23 @@ def load_to_postgres(dim_date, accounts, employees, headers_df, lines_df, gt_df)
                         ["date_key", "calendar_date", "year", "month", "day", "day_of_week",
                          "day_name", "is_weekend", "is_month_end", "fiscal_period"])
                 copy_df(cur, headers_df, "journal_header",
-                        ["header_id", "header_id_text", "posting_datetime", "date_key",
-                         "employee_key", "source_system", "entry_description", "is_reversal",
-                         "reversed_header_id", "reversal_flag"])
+                        ["header_id", "header_id_text", "posting_datetime", "transaction_date",
+                         "date_key", "employee_key", "source_system", "entry_description",
+                         "is_reversal", "reversed_header_id", "reversal_flag"])
                 copy_df(cur, lines_df, "journal_line",
                         ["line_id", "header_id", "line_num", "account_key",
                          "debit_amount", "credit_amount", "line_description"])
+                copy_df(cur, bank_df, "bank_transactions",
+                        ["bank_txn_id", "value_date", "amount", "reference", "counterparty"])
                 copy_df(cur, gt_df, "ground_truth",
-                        ["header_id", "line_id", "error_type", "detectability", "notes"])
+                        ["header_id", "line_id", "bank_txn_id", "error_type", "detectability", "notes"])
 
                 # Reset identity sequences so future manual inserts don't
                 # collide with the explicit IDs COPY just loaded.
                 for table, id_col, next_val in [
                     ("journal_header", "header_id", int(headers_df["header_id"].max()) + 1),
                     ("journal_line", "line_id", int(lines_df["line_id"].max()) + 1),
+                    ("bank_transactions", "bank_txn_id", int(bank_df["bank_txn_id"].max()) + 1),
                 ]:
                     cur.execute(f"SELECT setval(pg_get_serial_sequence('{table}', '{id_col}'), %s, false)",
                                 (next_val,))
@@ -783,16 +1059,26 @@ def main():
     headers_df, lines_df, gt_df = seed_errors(
         headers_df, lines_df, next_header_id, next_line_id, account_by_id, employees
     )
+    gt_df["bank_txn_id"] = pd.array([pd.NA] * len(gt_df), dtype="Int64")
+
+    print("Seeding backdated errors (transaction_date vs. posting_datetime)...")
+    headers_df, backdated_gt = seed_backdated_errors(headers_df, gt_df, rng)
+
+    print("Generating bank feed and seeding unmatched_bank errors...")
+    bank_df = generate_bank_transactions(headers_df, lines_df, accounts, rng)
+    bank_df, unmatched_gt = seed_unmatched_bank_errors(bank_df, rng)
+
+    gt_df = pd.concat([gt_df, backdated_gt, unmatched_gt], ignore_index=True)
 
     print()
-    validate(headers_df, lines_df, gt_df)
+    validate(headers_df, lines_df, gt_df, bank_df)
 
     if args.dry_run:
         print("\n--dry-run: skipping Postgres load.")
         return
 
     print("\nLoading to Postgres...")
-    load_to_postgres(dim_date, accounts, employees, headers_df, lines_df, gt_df)
+    load_to_postgres(dim_date, accounts, employees, headers_df, lines_df, gt_df, bank_df)
 
 
 if __name__ == "__main__":

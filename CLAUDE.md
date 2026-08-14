@@ -56,10 +56,20 @@ PGPASSWORD, PGPORT). Never hardcode credentials. .env is gitignored;
 - Clear month-end volume spike
 - Posting hours cluster 08:00-18:00 with a small after-hours tail
 - Seeded errors at roughly 3% of entries
+- Bank feed mirrors ledger cash movements, but references are deliberately
+  messy (abbreviations, truncation, inconsistent casing, dropped invoice
+  numbers, transposed words) - exact-match join to the ledger must fail on
+  most rows, or fuzzy matching (rapidfuzz) has nothing to do
+- transaction_date lag (vs. posting_datetime) is long-tailed: baseline lag
+  for every entry is small (0-2 days, normal processing delay), seeded
+  'backdated' errors redraw from a heavier tail out past 30 days
 
 ## Current phase
-Phase 1 - schema and data generation. Loaded: 113,981 headers /
-256,602 lines / 4,077 ground_truth rows.
+Phase 1b - bank feed + backdated errors added on top of Phase 1's schema and
+data generation. Loaded: 113,981 headers / 256,602 lines / 52,988
+bank_transactions / 5,397 ground_truth rows (4,077 original 6 types + 684
+backdated + 636 unmatched_bank, split 318/318 ledger-side vs. bank-side).
+See sql/00_sanity_checks.sql for the repeatable checks.
 Next: Phase 2, feature table in SQL.
 
 ## Schema (as built, sql/01_schema.sql)
@@ -96,6 +106,9 @@ journal_header
   header_id           BIGSERIAL PK
   header_id_text       VARCHAR(20) UNIQUE NOT NULL  -- 'JE-000001'
   posting_datetime     TIMESTAMP NOT NULL
+  transaction_date     DATE NOT NULL  -- when the event happened vs. posting_datetime
+                                       -- (when it was recorded). Not FK'd to dim_date -
+                                       -- a large backdating lag can fall outside the window.
   date_key             INT  NOT NULL  FK -> dim_date.date_key
   employee_key         INT  NOT NULL  FK -> dim_employee.employee_key
   source_system        VARCHAR(20) NOT NULL
@@ -113,16 +126,37 @@ journal_line
   credit_amount     NUMERIC(14,2) NOT NULL DEFAULT 0  CHECK >= 0
   line_description  VARCHAR(200) NULL
 
+bank_transactions
+  bank_txn_id     BIGSERIAL PK
+  value_date      DATE NOT NULL
+  amount          NUMERIC(14,2) NOT NULL  -- signed: + in / - out
+  reference       VARCHAR(140) NULL       -- deliberately messy, see Data shape targets
+  counterparty    VARCHAR(120) NULL
+  -- NOT FK'd to journal_header/journal_line on purpose: a real bank feed
+  -- doesn't know your JE numbers. Matching it to the ledger is a
+  -- fuzzy-matching problem (rapidfuzz), not a join. value_date lags the
+  -- mirrored ledger posting by 0-3 days (clearing delay).
+
 ground_truth
   gt_id           BIGSERIAL PK
   header_id       BIGINT NULL  FK -> journal_header.header_id
   line_id         BIGINT NULL  FK -> journal_line.line_id
+  bank_txn_id     BIGINT NULL  FK -> bank_transactions.bank_txn_id
   error_type      VARCHAR(30) NOT NULL  CHECK IN (duplicate, round_number, unbalanced,
-                    off_hours_posting, unusual_account_pair, structuring)
+                    off_hours_posting, unusual_account_pair, structuring,
+                    unmatched_bank, backdated)
   detectability   VARCHAR(10) NOT NULL  CHECK IN (easy, medium, hard)
   notes           VARCHAR(300) NULL
-  CHECK (header_id IS NOT NULL OR line_id IS NOT NULL)
+  CHECK (header_id IS NOT NULL OR line_id IS NOT NULL OR bank_txn_id IS NOT NULL)
   -- never join into a feature table (leakage, see Hard rules)
+  -- unmatched_bank labels either side of an orphan pair: header_id/line_id
+  -- set + bank_txn_id null = ledger cash line with no bank counterpart;
+  -- bank_txn_id set + header_id/line_id null = phantom bank row with no
+  -- ledger counterpart.
 
 Balance check per entry: SUM(debit_amount) - SUM(credit_amount) OVER
 (PARTITION BY header_id) should be 0 except the 338 seeded 'unbalanced' rows.
+
+Sanity checks: sql/00_sanity_checks.sql (row counts, balance check, error_type
+x detectability, amount/hour distributions, transaction_date lag buckets,
+unmatched_bank direction split). Re-run after any regeneration.

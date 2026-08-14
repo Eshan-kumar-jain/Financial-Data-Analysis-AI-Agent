@@ -23,6 +23,7 @@
 -- ============================================================================
 
 DROP TABLE IF EXISTS ground_truth CASCADE;
+DROP TABLE IF EXISTS bank_transactions CASCADE;
 DROP TABLE IF EXISTS journal_line CASCADE;
 DROP TABLE IF EXISTS journal_header CASCADE;
 DROP TABLE IF EXISTS dim_employee CASCADE;
@@ -104,6 +105,11 @@ CREATE TABLE journal_header (
     header_id           BIGSERIAL PRIMARY KEY,
     header_id_text       VARCHAR(20) NOT NULL UNIQUE,   -- human-facing JE number, e.g. 'JE-000001'
     posting_datetime     TIMESTAMP NOT NULL,
+    transaction_date     DATE NOT NULL,                 -- when the underlying event happened, vs.
+                                                          -- posting_datetime = when it was recorded.
+                                                          -- Not FK'd to dim_date: a large backdating
+                                                          -- lag can legitimately fall outside the
+                                                          -- 24-month window the date dimension covers.
     date_key             INT NOT NULL REFERENCES dim_date(date_key),
     employee_key         INT NOT NULL REFERENCES dim_employee(employee_key),
     source_system        VARCHAR(20) NOT NULL,          -- e.g. 'AP', 'AR', 'GL_MANUAL', 'PAYROLL'
@@ -140,20 +146,47 @@ CREATE INDEX ix_journal_line_header_id ON journal_line(header_id);
 CREATE INDEX ix_journal_line_account_key ON journal_line(account_key);
 
 -- ----------------------------------------------------------------------------
+-- bank_transactions: the bank feed. Deliberately NOT FK'd to journal_header/
+-- journal_line - a real bank feed has no idea what your JE numbers are, and
+-- the whole point of this table is that matching it back to the ledger is a
+-- fuzzy-matching problem (rapidfuzz, per CLAUDE.md tool rules), not a join.
+-- amount is signed (+ inflow / - outflow) so it can be compared directly
+-- against a cash-account line's debit/credit without a CASE reconstruction.
+-- reference/counterparty are intentionally messy (abbreviations, truncation,
+-- inconsistent casing, dropped invoice numbers, transposed words) - see the
+-- generator's messify_reference() - so an exact-match join fails on most
+-- rows and the fuzzy match has real work to do.
+-- ----------------------------------------------------------------------------
+CREATE TABLE bank_transactions (
+    bank_txn_id    BIGSERIAL PRIMARY KEY,
+    value_date     DATE NOT NULL,
+    amount         NUMERIC(14,2) NOT NULL,   -- signed: + = money in, - = money out
+    reference      VARCHAR(140),
+    counterparty   VARCHAR(120)
+);
+
+CREATE INDEX ix_bank_transactions_value_date ON bank_transactions(value_date);
+
+-- ----------------------------------------------------------------------------
 -- ground_truth: labels only, seeded by the /data generator. Never joined
 -- into a feature table or used as a model input (CLAUDE.md hard rule).
--- header_id/line_id are both nullable because some error types are a
--- property of the whole entry (unbalanced, structuring) and others are a
--- property of a single line (round_number, unusual_account_pair) -
--- forcing everything to line grain would misrepresent header-level errors.
--- detectability is tracked explicitly so recall can be reported by
--- difficulty tier instead of one flat number - CLAUDE.md calls out that a
--- single recall figure over uniformly-easy errors is meaningless.
+-- header_id/line_id/bank_txn_id are all nullable because some error types
+-- are a property of the whole entry (unbalanced, structuring), some a
+-- property of a single line (round_number, unusual_account_pair), and
+-- unmatched_bank can land on either side of the ledger/bank divide - a
+-- ledger cash line with no bank counterpart (header_id/line_id set,
+-- bank_txn_id null) or a bank row with no ledger counterpart (bank_txn_id
+-- set, header_id/line_id null). Forcing everything to one grain would
+-- misrepresent all of these. detectability is tracked explicitly so recall
+-- can be reported by difficulty tier instead of one flat number - CLAUDE.md
+-- calls out that a single recall figure over uniformly-easy errors is
+-- meaningless.
 -- ----------------------------------------------------------------------------
 CREATE TABLE ground_truth (
     gt_id           BIGSERIAL PRIMARY KEY,
     header_id       BIGINT REFERENCES journal_header(header_id),
     line_id         BIGINT REFERENCES journal_line(line_id),
+    bank_txn_id     BIGINT REFERENCES bank_transactions(bank_txn_id),
     error_type      VARCHAR(30) NOT NULL
                     CHECK (error_type IN (
                         'duplicate',
@@ -161,14 +194,17 @@ CREATE TABLE ground_truth (
                         'unbalanced',
                         'off_hours_posting',
                         'unusual_account_pair',
-                        'structuring'
+                        'structuring',
+                        'unmatched_bank',
+                        'backdated'
                     )),
     detectability   VARCHAR(10) NOT NULL
                     CHECK (detectability IN ('easy','medium','hard')),
     notes           VARCHAR(300),
-    CHECK (header_id IS NOT NULL OR line_id IS NOT NULL)
+    CHECK (header_id IS NOT NULL OR line_id IS NOT NULL OR bank_txn_id IS NOT NULL)
 );
 
 CREATE INDEX ix_ground_truth_header_id ON ground_truth(header_id);
 CREATE INDEX ix_ground_truth_line_id ON ground_truth(line_id);
+CREATE INDEX ix_ground_truth_bank_txn_id ON ground_truth(bank_txn_id);
 CREATE INDEX ix_ground_truth_error_type ON ground_truth(error_type);
