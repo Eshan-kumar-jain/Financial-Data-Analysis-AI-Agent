@@ -583,7 +583,7 @@ def seed_errors(headers_df, lines_df, next_header_id, next_line_id, account_by_i
     reversed_original_ids = headers_df["reversed_header_id"].dropna().unique()
     eligible = headers_df[
         (~headers_df["is_reversal"]) & (~headers_df["header_id"].isin(reversed_original_ids))
-    ]["header_id"].to_numpy()
+    ]["header_id"].to_numpy(copy=True)  # pandas CoW can hand back a read-only view; shuffle needs write access
     rng_local.shuffle(eligible)
 
     cursor = 0
@@ -789,7 +789,7 @@ def seed_backdated_errors(headers_df: pd.DataFrame, gt_df: pd.DataFrame, rng_loc
         (~headers_df["is_reversal"])
         & (~headers_df["header_id"].isin(reversed_original_ids))
         & (~headers_df["header_id"].isin(already_flagged))
-    ]["header_id"].to_numpy()
+    ]["header_id"].to_numpy(copy=True)  # pandas CoW can hand back a read-only view; shuffle needs write access
     rng_local.shuffle(eligible)
 
     n_backdated = int(round(BACKDATED_RATE * n))

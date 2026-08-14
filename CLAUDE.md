@@ -13,8 +13,11 @@ If a task can be done in SQL, do it in SQL.
 ## Tool rules
 - SQL for all cleaning, joins, aggregation, and feature building.
   Use window functions rather than pandas groupby.
-- Python ONLY for: statistical tests (scipy), Isolation Forest (sklearn),
-  fuzzy matching (rapidfuzz), and evaluation metrics.
+- Python ONLY for: statistical tests (scipy), unsupervised/statistical
+  detection - Benford's Law, segmented z-score/IQR, Isolation Forest
+  (sklearn) - fuzzy matching (rapidfuzz), supervised models - logistic
+  regression / random forest / XGBoost (sklearn, xgboost) with a
+  time-based split, SHAP for explainability, and evaluation metrics.
 - No pandas pipelines that duplicate what SQL already does.
 - Postgres is the single source of truth. No intermediate CSVs.
 
@@ -71,6 +74,24 @@ bank_transactions / 5,397 ground_truth rows (4,077 original 6 types + 684
 backdated + 636 unmatched_bank, split 318/318 ledger-side vs. bank-side).
 See sql/00_sanity_checks.sql for the repeatable checks.
 Next: Phase 2, feature table in SQL.
+
+## Phase plan
+- Phase 2 - feature table in SQL (window functions off journal_header/
+  journal_line/bank_transactions). ground_truth never joined in - leakage.
+- Phase 3 - EDA (notebooks/01_eda): distributions, seasonality, sanity vs.
+  the Phase 1/1b checks.
+- Phase 4a - statistical + unsupervised detection (notebooks/02_methods):
+  Benford's Law, segmented z-score/IQR, Isolation Forest (sklearn), fuzzy
+  ledger-to-bank matching (rapidfuzz).
+- Phase 4b - supervised detection (notebooks/02_methods): logistic
+  regression, random forest, XGBoost. Time-based train/test split (train
+  on earlier fiscal periods, test on later - no shuffling across time,
+  that would leak future patterns into the past). SHAP for feature
+  importance/explainability.
+- Phase 5 - evaluation (notebooks/03_evaluation): score 4a and 4b against
+  ground_truth as two separate scoreboards, not blended into one ranking -
+  precision/recall by detectability tier for each, per the Hard rules
+  requirement that a single flat recall number is meaningless.
 
 ## Schema (as built, sql/01_schema.sql)
 
