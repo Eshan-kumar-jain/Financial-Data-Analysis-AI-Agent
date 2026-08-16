@@ -79,3 +79,17 @@ FROM ground_truth
 WHERE error_type = 'unmatched_bank'
 GROUP BY 1, 2
 ORDER BY 1, 2;
+
+-- 8. NEW - day-of-month posting volume curve. Confirms the month-end close
+-- spike CLAUDE.md's Data shape targets call for: is_month_end days (last 3
+-- business days of the month, which fall on different calendar days month
+-- to month) should show materially higher header counts than mid-month days.
+SELECT
+    d.day AS day_of_month,
+    d.is_month_end,
+    COUNT(*) AS n_headers,
+    ROUND(COUNT(*)::numeric / COUNT(DISTINCT d.calendar_date), 1) AS avg_headers_per_occurrence
+FROM journal_header h
+JOIN dim_date d ON d.date_key = h.date_key
+GROUP BY d.day, d.is_month_end
+ORDER BY d.day;

@@ -66,6 +66,25 @@ PGPASSWORD, PGPORT). Never hardcode credentials. .env is gitignored;
 - transaction_date lag (vs. posting_datetime) is long-tailed: baseline lag
   for every entry is small (0-2 days, normal processing delay), seeded
   'backdated' errors redraw from a heavier tail out past 30 days
+- Baseline (non-seeded) entries also carry a tiny legitimate long-lag tail
+  (~0.2% past 9 days) so raw lag>9 isn't a perfect classifier for seeded
+  'backdated' on its own
+- Seeded 'backdated' targets are NOT drawn uniformly at random: selection is
+  weighted toward manual source, after-hours posting, and period-end
+  posting (RISK_WEIGHT in data/generate_journal_entries.py::
+  seed_backdated_errors = manual 4.3, after_hours 2.7, period_end 2.0,
+  calibrated by odds-ratio against each factor's baseline prevalence in the
+  eligible pool, then checked empirically). This holds even within the
+  'hard' detectability tier (lag 0-2, same range as baseline lag) - deliberate,
+  since an earlier analysis (sql/backdated_hard_tier_signal.sql) found the
+  hard tier was statistically indistinguishable from clean entries on every
+  axis when selection was uniform-random, making lag the only signal.
+  Calibrated result (hard tier vs. clean baseline): manual source 28.5% vs
+  6.2%, after-hours 23.0% vs 7.2%, period-end posting 54.1% vs 26.7%. ~18%
+  of the hard tier (UNDETECTABLE_FRAC = 0.175 target) is deliberately left
+  with none of these three drivers present - genuinely undetectable by
+  design, not a calibration gap, so hard-tier recall has an honest ceiling
+  below 100%.
 
 ## Current phase
 Phase 1b - bank feed + backdated errors added on top of Phase 1's schema and

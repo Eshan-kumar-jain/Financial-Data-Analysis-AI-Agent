@@ -771,12 +771,38 @@ def seed_errors(headers_df, lines_df, next_header_id, next_line_id, account_by_i
 # out (medium), and a tail reaches 10-180 days (easy). Overlapping the low
 # end with the baseline is deliberate - a rule as simple as "lag > 0 ->
 # anomaly" would violate CLAUDE.md's requirement that detectability vary.
+#
+# WHICH headers get picked as backdated targets is not uniform-random: real
+# backdating correlates with sloppier process controls, so the target pool
+# is weighted toward manual-source entries, after-hours postings (relative
+# to the poster's own typical window), and period-end posting (dim_date's
+# is_month_end - the close crunch where corrections get jammed in late).
+# That's what gives the 'hard' detectability tier (lag 0-2, same range as
+# baseline - see notebooks/03_evaluation's finding that lag alone carries no
+# signal there) something else to be caught on. The correlation is kept
+# partial: ~17.5% of targets are drawn from headers with NONE of the three
+# risk drivers, so a meaningful slice of the hard tier stays genuinely
+# undetectable rather than every backdated entry becoming catchable via a
+# second proxy feature.
 # ============================================================================
-def seed_backdated_errors(headers_df: pd.DataFrame, gt_df: pd.DataFrame, rng_local):
+def seed_backdated_errors(headers_df: pd.DataFrame, gt_df: pd.DataFrame, rng_local,
+                           employees: pd.DataFrame, dim_date: pd.DataFrame):
     n = len(headers_df)
     headers_df = headers_df.copy()
 
     baseline_lag = rng_local.poisson(0.4, size=n)  # mean 0.4d: mostly 0, some 1-2
+
+    # A tiny slice of ordinary (non-seeded) entries also get a legitimate
+    # long lag - a late-arriving invoice, a cross-entity consolidation delay.
+    # Without this, "lag > 9 days" would be a perfect classifier for seeded
+    # 'backdated' (easy tier starts at lag>=10), which is exactly the kind of
+    # single-feature-solves-it shortcut CLAUDE.md's detectability-must-vary
+    # rule is meant to rule out.
+    LEGIT_LONG_LAG_RATE = 0.002  # ~0.2%, within the requested 0.1-0.3% band
+    legit_tail_mask = rng_local.random(n) < LEGIT_LONG_LAG_RATE
+    legit_tail_lag = rng_local.integers(10, 46, size=n)  # 10-45d, benign cause
+    baseline_lag = np.where(legit_tail_mask, legit_tail_lag, baseline_lag)
+
     post_dates = pd.to_datetime(headers_df["posting_datetime"]).dt.normalize()
     headers_df["transaction_date"] = (post_dates - pd.to_timedelta(baseline_lag, unit="D")).dt.date
 
@@ -785,15 +811,64 @@ def seed_backdated_errors(headers_df: pd.DataFrame, gt_df: pd.DataFrame, rng_loc
     # non-overlap discipline as seed_errors' `eligible` pool.
     already_flagged = set(gt_df["header_id"].dropna().astype(int))
     reversed_original_ids = set(headers_df["reversed_header_id"].dropna().astype(int))
-    eligible = headers_df[
+    eligible_df = headers_df[
         (~headers_df["is_reversal"])
         & (~headers_df["header_id"].isin(reversed_original_ids))
         & (~headers_df["header_id"].isin(already_flagged))
-    ]["header_id"].to_numpy(copy=True)  # pandas CoW can hand back a read-only view; shuffle needs write access
-    rng_local.shuffle(eligible)
+    ].copy()
+
+    # Per-header risk covariates driving selection weight (not the lag draw
+    # itself - lag magnitude stays uncorrelated with these, only WHICH
+    # headers become backdated targets is biased).
+    month_end_lookup = dim_date.set_index("date_key")["is_month_end"]
+    emp_hours = employees.set_index("employee_key")[["typical_start_hour", "typical_end_hour"]]
+    eligible_df["is_manual"] = eligible_df["source_system"] == "GL_MANUAL"
+    eligible_df = eligible_df.join(emp_hours, on="employee_key")
+    posting_hour = pd.to_datetime(eligible_df["posting_datetime"]).dt.hour
+    eligible_df["is_after_hours"] = (
+        (posting_hour < eligible_df["typical_start_hour"])
+        | (posting_hour >= eligible_df["typical_end_hour"])
+    )
+    eligible_df["is_period_end"] = eligible_df["date_key"].map(month_end_lookup).fillna(False)
 
     n_backdated = int(round(BACKDATED_RATE * n))
-    targets = eligible[:n_backdated]
+
+    # Stage 1: force a fixed ~17.5% of targets from headers with none of the
+    # three risk drivers - the "genuinely undetectable" slice of the hard tier.
+    UNDETECTABLE_FRAC = 0.175
+    no_risk_mask = ~(eligible_df["is_manual"] | eligible_df["is_after_hours"] | eligible_df["is_period_end"])
+    no_risk_pool = eligible_df.loc[no_risk_mask, "header_id"].to_numpy()
+    n_undetectable = int(round(UNDETECTABLE_FRAC * n_backdated))
+    undetectable_targets = rng_local.choice(no_risk_pool, size=n_undetectable, replace=False)
+
+    # Stage 2: the remainder, weighted toward the risk drivers. Weights are
+    # calibrated (via odds-ratio against each factor's baseline prevalence in
+    # the eligible pool, then checked empirically against
+    # sql/backdated_hard_tier_signal.sql) to land the FULL backdated
+    # population - hard tier included, since selection weight doesn't
+    # condition on the lag draw - at roughly: manual source ~25% (vs ~6%
+    # baseline), after-hours ~20% (vs ~7% baseline), period-end posting ~45%
+    # (vs ~27% baseline, already elevated by the month-end volume weighting
+    # in sample_header_dates).
+    # Pool restricted to headers carrying >=1 risk factor - if the zero-risk
+    # majority of the eligible pool stayed in this draw, its sheer headcount
+    # would swamp the weighting and leak well past UNDETECTABLE_FRAC's
+    # intended share (empirically ~2x over, verified against
+    # sql/backdated_hard_tier_signal.sql before adding this restriction).
+    RISK_WEIGHT = dict(is_manual=4.3, is_after_hours=2.7, is_period_end=2.0)
+    risky_pool_df = eligible_df[~no_risk_mask]
+    weight = np.ones(len(risky_pool_df))
+    for col, w in RISK_WEIGHT.items():
+        weight *= np.where(risky_pool_df[col], w, 1.0)
+    p = weight / weight.sum()
+
+    n_risky = n_backdated - n_undetectable
+    risky_targets = rng_local.choice(risky_pool_df["header_id"].to_numpy(),
+                                      size=n_risky, replace=False, p=p)
+
+    targets = np.concatenate([undetectable_targets, risky_targets])
+    rng_local.shuffle(targets)  # detectability draw order shouldn't track risk group
+
     long_tail_lag = np.round(rng_local.lognormal(mean=0.35, sigma=1.3, size=len(targets))).astype(int)
     long_tail_lag = np.clip(long_tail_lag, 0, 180)
 
@@ -1062,7 +1137,7 @@ def main():
     gt_df["bank_txn_id"] = pd.array([pd.NA] * len(gt_df), dtype="Int64")
 
     print("Seeding backdated errors (transaction_date vs. posting_datetime)...")
-    headers_df, backdated_gt = seed_backdated_errors(headers_df, gt_df, rng)
+    headers_df, backdated_gt = seed_backdated_errors(headers_df, gt_df, rng, employees, dim_date)
 
     print("Generating bank feed and seeding unmatched_bank errors...")
     bank_df = generate_bank_transactions(headers_df, lines_df, accounts, rng)
