@@ -87,12 +87,19 @@ PGPASSWORD, PGPORT). Never hardcode credentials. .env is gitignored;
   below 100%.
 
 ## Current phase
-Phase 1b - bank feed + backdated errors added on top of Phase 1's schema and
-data generation. Loaded: 113,981 headers / 256,602 lines / 52,988
-bank_transactions / 5,397 ground_truth rows (4,077 original 6 types + 684
-backdated + 636 unmatched_bank, split 318/318 ledger-side vs. bank-side).
-See sql/00_sanity_checks.sql for the repeatable checks.
-Next: Phase 2, feature table in SQL.
+Phase 2 done - feature table built in sql/02_features.sql (journal_entry_
+features, one row per journal_header, 113,981 rows, no ground_truth join).
+Amount/timing/behavioural/structural features per the Phase 2 plan below,
+plus a chronological train/test split column (first 18 fiscal periods vs.
+last 6). Frequency features (user_account_frequency, user_entry_count_month,
+account_pair_frequency, is_first_time_pair, account_amount_zscore) are all
+running/expanding windows ordered by posting_datetime so no test-period
+information leaks into train-period feature values; account_amount_zscore
+is additionally NULL below 10 prior entries for the same account
+(account_entry_seq <= 10) rather than coalesced, since a mean/stddev from
+a handful of points is noise. pct_of_account_monthly_total stays a
+full-period sum since fiscal periods never straddle the train/test split.
+Next: Phase 3, EDA (notebooks/01_eda).
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
