@@ -223,6 +223,16 @@ SELECT
         -- time, unlike reversal_flag which depends on a future entry.
 
     -- ================= BEHAVIOURAL =================
+    COUNT(*) OVER emp_w AS employee_entry_seq,
+        -- running count of entries posted by this employee, as of and
+        -- including this one (1-indexed) - same running-window shape as
+        -- account_entry_seq above, ordered by posting_datetime so it's an
+        -- expanding window, not a whole-partition one (no test-period
+        -- leakage into train-period values). Left ungated on purpose: no
+        -- threshold applied here, unlike account_amount_zscore's >10 gate.
+        -- Exposed raw so a "new employee" cutoff can be picked at modelling
+        -- time (Phase 4b) rather than baked into the feature table now.
+
     COUNT(*) OVER user_acct_w AS user_account_frequency,
         -- running count: how many times this employee has posted to this
         -- account, as of and including this entry.
@@ -282,6 +292,9 @@ WINDOW
     acct_month_w  AS (PARTITION BY primary_account_key, fiscal_period),
     period_w      AS (PARTITION BY fiscal_period),
     period_rank_w AS (ORDER BY fiscal_period),
+    emp_w         AS (PARTITION BY employee_key
+                       ORDER BY posting_datetime, header_id
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
     user_acct_w   AS (PARTITION BY employee_key, primary_account_key
                        ORDER BY posting_datetime, header_id
                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),

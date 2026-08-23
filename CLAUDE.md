@@ -92,14 +92,29 @@ features, one row per journal_header, 113,981 rows, no ground_truth join).
 Amount/timing/behavioural/structural features per the Phase 2 plan below,
 plus a chronological train/test split column (first 18 fiscal periods vs.
 last 6). Frequency features (user_account_frequency, user_entry_count_month,
-account_pair_frequency, is_first_time_pair, account_amount_zscore) are all
-running/expanding windows ordered by posting_datetime so no test-period
-information leaks into train-period feature values; account_amount_zscore
-is additionally NULL below 10 prior entries for the same account
-(account_entry_seq <= 10) rather than coalesced, since a mean/stddev from
-a handful of points is noise. pct_of_account_monthly_total stays a
-full-period sum since fiscal periods never straddle the train/test split.
-Next: Phase 3, EDA (notebooks/01_eda).
+account_pair_frequency, is_first_time_pair, account_amount_zscore,
+employee_entry_seq) are all running/expanding windows ordered by
+posting_datetime so no test-period information leaks into train-period
+feature values; account_amount_zscore is additionally NULL below 10 prior
+entries for the same account (account_entry_seq <= 10) rather than
+coalesced, since a mean/stddev from a handful of points is noise.
+employee_entry_seq (running count of prior entries by that employee,
+1-indexed, expanding window same shape as account_entry_seq) is
+deliberately left ungated - no "new employee" threshold applied in SQL,
+since EDA found posting volume per employee follows a Zipf/power-law
+distribution (data/generate_journal_entries.py::pick_employee, top employee
+alone is ~20% of all headers - see notebooks/01_eda.ipynb finding #8), so
+where to draw a "new/inexperienced employee" cutoff is a modelling decision
+for Phase 4b, not a fixed rule to bake into the feature table now.
+pct_of_account_monthly_total stays a full-period sum since fiscal periods
+never straddle the train/test split.
+
+Phase 3 done - EDA in notebooks/01_eda.ipynb, executed against the live DB
+(jupysql %%sql cells, blind to ground_truth). 12 numbered findings covering
+scale/shape, structural cleanliness, the 338 unbalanced headers, posting-hour/
+day-of-week/month-end patterns, posting lag, employee/account volume
+concentration, and amount splits by account_type/role/manual-vs-system.
+Next: Phase 4a, statistical + unsupervised detection (notebooks/02_methods).
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
