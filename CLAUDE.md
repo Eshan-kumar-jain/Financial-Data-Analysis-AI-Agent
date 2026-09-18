@@ -38,6 +38,42 @@ Connection details come from env vars (PGHOST, PGDATABASE, PGUSER,
 PGPASSWORD, PGPORT). Never hardcode credentials. .env is gitignored;
 .env.example is committed.
 
+## Power BI MCP
+Server: powerbi-modeling-mcp. Must run **locally**, on the same machine as
+Power BI Desktop - a remote/hosted connector cannot work, since its
+localhost resolves to its own server, not this machine.
+
+Prerequisite: Power BI Desktop must already be open with the .pbix loaded
+before connecting. The server only detects Desktop instances running on
+localhost - it can't launch or load one for you.
+
+Connection loop, every session (the port is not stable across restarts,
+never cache it):
+1. `ListLocalInstances` -> returns the model name and port. Re-run this
+   every session (and after any Desktop restart) - the port changes each
+   time Desktop restarts.
+2. Connect with `Data Source=localhost:<PORT>;Application Name=MCP-PBIModeling`,
+   using the port from step 1.
+3. `dax_query_operations` -> `Execute` to run DAX, e.g.
+   `EVALUATE ROW("Total Revenue", [Total Revenue])`.
+
+If `ListLocalInstances` returns empty: either Desktop isn't open, the
+.pbix isn't loaded yet, or the MCP got registered as a remote connector
+instead of local - check the registration before assuming the model itself
+is broken.
+
+Scope - what this MCP is and isn't for in this project:
+- **Use it for**: authoring and testing DAX measures, inspecting the model
+  (relationships, columns, measure definitions), and cross-checking a
+  measure against the equivalent SQL from `notebooks/05_evaluation.ipynb`.
+- **Do not use it for**: report page layout, visuals, slicers, or
+  formatting - all of that is manual in Desktop, the MCP has no reach into
+  the report canvas.
+- Every DAX measure that has a SQL equivalent must be validated against
+  that SQL before it's used on a report page - run both, compare the
+  numbers, and record the comparison (which SQL query, which DAX measure,
+  match or mismatch) rather than trusting the DAX in isolation.
+
 ## Hard rules
 - `ground_truth` is labels only. It must never be joined into a feature
   table or used as a model input. That is leakage.
@@ -253,6 +289,13 @@ part of this fix and are current.
   not blended into one ranking - precision/recall by detectability tier for
   each, per the Hard rules requirement that a single flat recall number is
   meaningless.
+- Phase 6 - Power BI (/powerbi). Split by tool, not by task: the semantic
+  model and DAX measures are built and tested through the Power BI MCP
+  (see that section above) - relationships, measure definitions, and
+  validating each measure against its SQL equivalent from Phase 5's
+  notebook before it's trusted; report page layout, visuals, slicers, and
+  formatting are manual in Desktop, since the MCP has no reach into the
+  report canvas.
 
 ## Schema (as built, sql/01_schema.sql)
 
