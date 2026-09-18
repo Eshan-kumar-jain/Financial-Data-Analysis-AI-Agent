@@ -48,7 +48,7 @@ PGPASSWORD, PGPORT). Never hardcode credentials. .env is gitignored;
 
 ## Structure
 /sql        staging, star schema, feature table
-/notebooks  01_eda, 02_methods, 03_evaluation
+/notebooks  01_eda, 02_methods, 03_reconciliation, 04_supervised, 05_evaluation
 /data       generation scripts, ground truth
 /powerbi    .pbix and DAX notes
 /docs       findings write-up
@@ -114,25 +114,145 @@ Phase 3 done - EDA in notebooks/01_eda.ipynb, executed against the live DB
 scale/shape, structural cleanliness, the 338 unbalanced headers, posting-hour/
 day-of-week/month-end patterns, posting lag, employee/account volume
 concentration, and amount splits by account_type/role/manual-vs-system.
-Next: Phase 4a, statistical + unsupervised detection (notebooks/02_methods).
+
+Phase 4a done - notebooks/02_methods.ipynb (Benford, segmented z-score/IQR,
+Isolation Forest, method overlap) and notebooks/03_reconciliation.ipynb
+(two-stage bank reconciliation: SQL blocking on amount + 0-3 day date
+window, then rapidfuzz on reference strings), both executed against the
+live DB, both blind to ground_truth. Reconciliation split into its own
+notebook rather than folded into 02_methods so the blind unsupervised work
+stays separate from the labelled work that comes later. Key results: JE
+number recovered from the bank reference resolves 53.9% of bank rows
+outright; partial_ratio at threshold 70 (chosen over token_sort_ratio and
+WRatio - see the notebook's Section 5/7 findings, the candidate string has
+no counterparty text so whole-string scorers are structurally capped)
+recovers a further 12.6%, leaving 32.9% unmatched and 0.6% true blocking
+orphans. Section 9 diagnosed that 32.9% by re-blocking with 100x amount
+tolerance and a 5x wider date window: zero rows had a better candidate
+under the wider block, so the loss is 100% a scoring/threshold problem, not
+a blocking problem. Section 10 replaced the pure-string threshold with a
+composite score (weighted amount exactness + date proximity + string
+similarity, ranked instead of string alone) and a no-text baseline (accept
+the unique blocked candidate outright when amount is exact and date is in
+window): the baseline alone clears 99.2% of Stage 2 (since amount_diff is
+exactly 0.00 for 100% of candidates in this dataset - bank amounts mirror
+the ledger with no rounding noise - so blocking-plus-uniqueness is nearly
+the whole answer here), a moderate composite blend
+(w_amount=w_date=0.3, w_string=0.4 @ threshold 0.50) clears 78.4%, and
+composite ranking (vs. string-only ranking) picks a different top
+candidate in 48.7% of the 195 multi-candidate blocks. Total blind coverage
+including Stage 1: string-only 66.5%, composite 89.6%, baseline 99.0% - the
+baseline's number is dataset-specific (perfect amount mirroring) rather
+than a generally trustworthy rule, so the composite is the recommended
+production default. Whether any of this is actually right is left for
+Phase 5 to score against ground_truth, on purpose.
+
+Phase 4b done - notebooks/04_supervised.ipynb, executed against the live DB.
+This is the one notebook that queries ground_truth - joined into a labelled
+frame by header_id only, at training/eval time, never written back into
+journal_entry_features (Hard rules). Labels rolled up per header via
+array_agg(DISTINCT error_type/detectability) since 18 of ~5,000 flagged
+headers carry two ground_truth rows (unmatched_bank's ledger-side pool is
+drawn independently of the other error types' shared eligible pool).
+Time-based split reused as-is (train=first 18 periods, test=last 6).
+Imbalance handled via class_weight="balanced" (logistic regression, random
+forest) and scale_pos_weight computed from y_train only (XGBoost) - not
+SMOTE/resampling, since error_type is heterogeneous enough that
+interpolating between e.g. a structuring positive and a backdated positive
+would synthesize a pattern that was never actually seeded. SHAP
+(shap.TreeExplainer on XGBoost, exact) run both as a global beeswarm over a
+2,000-row test sample and as individual waterfall plots contrasting an
+easy-tier high-confidence catch against the hard-tier test positive the
+model is least confident about.
+
+Section 11 audited every seeding routine in data/generate_journal_entries.py
+for fields it writes that journal_entry_features reads, and found one real
+leak: structuring appended literal " (split n/m)" to entry_description for
+every split header, which is why description_length ranked #3 in the SHAP
+importance and why structuring hit a suspicious 1.000 recall across all
+three models despite being labelled 'hard' detectability - the model was
+reading the seeding mechanism's fingerprint, not the intended
+near-$10k-threshold amount pattern. No other error type's seeding routine
+writes a field outside its intended signal: round_number/unbalanced only
+touch line amounts (the former is the designed is_round_* signal, the
+latter a small random nudge with no fixed marker); duplicate clones a
+header verbatim (a genuine behavioural duplicate, not an artifact);
+off_hours_posting/unusual_account_pair only touch posting_datetime+
+employee_key / account_key respectively, both exactly the designed
+timing/structural signal; backdated only writes transaction_date (its
+correlation with is_manual_entry/is_after_hours/is_last_two_days is
+deliberate SELECTION bias toward headers that already have those
+properties, not a field mutation - documented, intentional, not a leak);
+unmatched_bank never touches journal_header/journal_line at all (it only
+adds/drops bank_transactions rows, which journal_entry_features doesn't
+read - can't leak into a table it never joins).
+
+**Fixed**: the " (split n/m)" suffix was removed from
+data/generate_journal_entries.py's structuring block (the split
+relationship now lives in ground_truth.notes only); data regenerated
+end-to-end with the same RNG_SEED=42 (sql/01_schema.sql reset ->
+generator re-run -> sql/00_sanity_checks.sql re-verified identical row
+counts/balance/error mix/lag/amount distributions to the pre-fix run, only
+entry_description text differs); journal_entry_features rebuilt; notebooks
+01-04 re-executed against the regenerated DB, 0 errors across all four.
+Section 11.2 is kept as the record of the investigation (before-fix numbers
+stated explicitly, then the fix, then the post-fix numbers confirming it
+worked) rather than scrubbed once resolved.
+
+Post-fix test-period results (threshold 0.5): logistic regression precision
+0.172/recall 0.696/AP 0.408; random forest precision 0.739/recall 0.555/
+AP 0.604; XGBoost precision 0.448/recall 0.626/AP 0.638. Recall by
+detectability tier: easy ~0.68-0.77, medium ~0.40-0.60, hard ~0.55-0.70.
+structuring's own recall dropped from the pre-fix 1.000/1.000/1.000 to a
+realistic 0.864/0.682/0.868 (LR/RF/XGB) - still fairly high since the
+intended amount/structural signal is real, but no longer a trivial
+giveaway. Key finding (unchanged by the fix, structuring wasn't the cause
+of this one): RF/XGB recall collapses to near zero (0.02-0.11) on
+unbalanced, duplicate, and unmatched_bank specifically, because
+journal_entry_features has no direct feature for any of the three (no
+imbalance-magnitude, no duplicate-proximity count, no reconciliation
+status - the last one is deliberately 03_reconciliation.ipynb's problem,
+not this feature table's); restricting recall to the five addressable
+types (round_number/backdated/off_hours_posting/unusual_account_pair/
+structuring) shows 0.71-0.84 across all three models, confirming the gap
+is feature coverage, not a model weakness.
+
+SHAP top-15 post-fix (grouped by the same amount/timing/behavioural/
+structural taxonomy sql/02_features.sql uses): user_account_frequency
+(behavioural) leads, with account_pair_frequency (structural) and
+total_amount (amount) close behind at #2/#3 - a three-way contest at the
+top rather than the behavioural sweep the pre-fix ranking (with
+description_length falsely inflated to #3) appeared to show. Phase 3 EDA's
+prediction that behavioural signal would outrank structural: partially
+confirmed either way, but the post-fix ranking is the honest version of
+that comparison.
+
+Next: Phase 5, evaluation (notebooks/05_evaluation.ipynb) - score 4a and
+4b against ground_truth as two separate scoreboards per the Phase plan.
+4a's notebooks (01-03) were also re-executed against the regenerated DB as
+part of this fix and are current.
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
   journal_line/bank_transactions). ground_truth never joined in - leakage.
 - Phase 3 - EDA (notebooks/01_eda): distributions, seasonality, sanity vs.
   the Phase 1/1b checks.
-- Phase 4a - statistical + unsupervised detection (notebooks/02_methods):
-  Benford's Law, segmented z-score/IQR, Isolation Forest (sklearn), fuzzy
-  ledger-to-bank matching (rapidfuzz).
-- Phase 4b - supervised detection (notebooks/02_methods): logistic
+- Phase 4a - statistical + unsupervised detection: Benford's Law, segmented
+  z-score/IQR, Isolation Forest (sklearn) in notebooks/02_methods; fuzzy
+  ledger-to-bank matching (rapidfuzz) in its own notebooks/03_reconciliation
+  - two-stage (SQL blocking on amount/date, then rapidfuzz on reference
+  text), threshold-swept, kept separate from 02_methods so blind
+  unsupervised work doesn't blend with the labelled work in Phase 4b/5.
+- Phase 4b - supervised detection (notebooks/04_supervised): logistic
   regression, random forest, XGBoost. Time-based train/test split (train
   on earlier fiscal periods, test on later - no shuffling across time,
   that would leak future patterns into the past). SHAP for feature
   importance/explainability.
-- Phase 5 - evaluation (notebooks/03_evaluation): score 4a and 4b against
-  ground_truth as two separate scoreboards, not blended into one ranking -
-  precision/recall by detectability tier for each, per the Hard rules
-  requirement that a single flat recall number is meaningless.
+- Phase 5 - evaluation (notebooks/05_evaluation): score 4a (methods +
+  reconciliation) and 4b against ground_truth as two separate scoreboards,
+  not blended into one ranking - precision/recall by detectability tier for
+  each, per the Hard rules requirement that a single flat recall number is
+  meaningless.
 
 ## Schema (as built, sql/01_schema.sql)
 

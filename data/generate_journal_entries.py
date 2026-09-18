@@ -727,7 +727,14 @@ def seed_errors(headers_df, lines_df, next_header_id, next_line_id, account_by_i
             new_h["header_id"] = next_header_id
             new_h["header_id_text"] = f"JE-{next_header_id:06d}"
             new_h["posting_datetime"] = orig_h["posting_datetime"] + timedelta(days=gap)
-            new_h["entry_description"] = orig_h["entry_description"] + f" (split {j+1}/{n_splits})"
+            # entry_description is left exactly as orig_h's (no " (split n/m)"
+            # suffix) - a real structured-payment pattern doesn't announce
+            # itself in the text, and description_length is a feature
+            # (sql/02_features.sql) any such marker would trivially leak
+            # through (found in notebooks/04_supervised.ipynb Section 11.2 -
+            # it was giving every model ~1.000 recall on structuring for the
+            # wrong reason). The split relationship is still fully recorded,
+            # just in ground_truth.notes below instead of a feature-table field.
             headers_df = pd.concat([headers_df, pd.DataFrame([new_h])], ignore_index=True)
 
             for _, l in orig_lines.iterrows():
@@ -738,14 +745,14 @@ def seed_errors(headers_df, lines_df, next_header_id, next_line_id, account_by_i
                 nl[side] = amt
                 lines_df = pd.concat([lines_df, pd.DataFrame([nl])], ignore_index=True)
                 next_line_id += 1
-            new_ids.append(next_header_id)
+            new_ids.append((next_header_id, j + 1))
             next_header_id += 1
 
-        for nid in new_ids:
+        for nid, piece_num in new_ids:
             ground_truth.append(dict(header_id=int(nid), line_id=None, error_type="structuring",
                                       detectability="hard",
-                                      notes=f"1 of {n_splits} pieces split from original ~{total:.0f} total, "
-                                            f"each kept under ${THRESHOLD:.0f} threshold"))
+                                      notes=f"Piece {piece_num} of {n_splits} split from original "
+                                            f"~{total:.0f} total, each kept under ${THRESHOLD:.0f} threshold"))
 
     headers_df = headers_df.sort_values("header_id").reset_index(drop=True)
     lines_df = lines_df.sort_values(["header_id", "line_num"]).reset_index(drop=True)
