@@ -110,6 +110,7 @@ base AS (
         h.entry_description,
         d.calendar_date,
         d.is_weekend,
+        d.is_month_end,
         d.fiscal_period,
         la.entry_line_count,
         la.total_amount,
@@ -199,11 +200,25 @@ SELECT
         -- hardcoded month length, so it's correct across 28/30/31-day
         -- months with no CASE statement.
 
-    ((MAX(calendar_date) OVER period_w - calendar_date) <= 1) AS is_last_two_days,
+    is_month_end AS is_period_end,
         -- period-end posting is one of the three factors the generator
         -- weights backdating toward (RISK_WEIGHT.is_period_end in
-        -- data/generate_journal_entries.py) - this is that same signal,
-        -- built independently in the feature table.
+        -- data/generate_journal_entries.py), and this is that same signal:
+        -- dim_date.is_month_end, the last 3 BUSINESS days of the month,
+        -- keyed off journal_header.date_key exactly as
+        -- seed_backdated_errors keys it.
+        --
+        -- This previously read ((MAX(calendar_date) OVER period_w -
+        -- calendar_date) <= 1) AS is_last_two_days - the last 2 CALENDAR
+        -- days - which is a different window and a different day count.
+        -- The two disagree on any month ending on a weekend, and the gap
+        -- showed up in notebooks/05_evaluation.ipynb: measuring the
+        -- "undetectable" backdated slice with the calendar proxy put it at
+        -- ~42%, against the generator's actual UNDETECTABLE_FRAC of 17.5%.
+        -- Aligning the definition is what makes the feature a real proxy
+        -- for the driver rather than a near-miss of it. days_from_period_end
+        -- below is unchanged and still calendar-based - it's a continuous
+        -- distance, not the generator's binary driver.
 
     (EXTRACT(HOUR FROM posting_datetime) < typical_start_hour
      OR EXTRACT(HOUR FROM posting_datetime) >= typical_end_hour) AS is_after_hours,

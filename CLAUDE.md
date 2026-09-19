@@ -123,6 +123,8 @@ Scope - what this MCP is and isn't for in this project:
   below 100%.
 
 ## Current phase
+Phases 2-5 done, Phase 6 (Power BI) is next - see the end of this section.
+
 Phase 2 done - feature table built in sql/02_features.sql (journal_entry_
 features, one row per journal_header, 113,981 rows, no ground_truth join).
 Amount/timing/behavioural/structural features per the Phase 2 plan below,
@@ -216,7 +218,7 @@ header verbatim (a genuine behavioural duplicate, not an artifact);
 off_hours_posting/unusual_account_pair only touch posting_datetime+
 employee_key / account_key respectively, both exactly the designed
 timing/structural signal; backdated only writes transaction_date (its
-correlation with is_manual_entry/is_after_hours/is_last_two_days is
+correlation with is_manual_entry/is_after_hours/is_period_end is
 deliberate SELECTION bias toward headers that already have those
 properties, not a field mutation - documented, intentional, not a leak);
 unmatched_bank never touches journal_header/journal_line at all (it only
@@ -263,10 +265,130 @@ prediction that behavioural signal would outrank structural: partially
 confirmed either way, but the post-fix ranking is the honest version of
 that comparison.
 
-Next: Phase 5, evaluation (notebooks/05_evaluation.ipynb) - score 4a and
-4b against ground_truth as two separate scoreboards per the Phase plan.
-4a's notebooks (01-03) were also re-executed against the regenerated DB as
-part of this fix and are current.
+Phase 5 done - notebooks/05_evaluation.ipynb, executed against the live DB,
+80 cells, 0 errors. Every 4a and 4b method re-run on the same test set
+(last 6 fiscal periods, 28,695 headers, 1,293 positives / 1,297 (header,
+error_type) pairs) and scored against ground_truth as two separate
+scoreboards.
+
+Scoreboard A (unsupervised, blind - the realistic estimate): best F1 is
+segmented IQR at precision 0.248 / recall 0.295 / F1 0.269; best AP is
+Isolation Forest at 0.215; segmented z-score is the precision corner
+(0.464 at recall 0.111); Isolation Forest is the AP leader at 0.214.
+Benford at entry level is indistinguishable from
+random (precision 0.058 vs a 0.045 base rate, AP 0.049) - not a failure of
+the law but a unit mismatch, since an account-level digit test pushed down
+to that account's entries flags them all equally; MAD ranking still
+identifies the deviating accounts correctly. The blind methods are
+amount-shaped detectors: IQR catches 59.9% of round_number and 77.7% of
+structuring and <7% of everything else. Medium-tier recall collapses to
+0.04-0.08 for every blind method. The account_entry_seq > 10 restriction
+costs no coverage in the test period (every test account is past warm-up);
+only reconciliation has restricted coverage (0.42, cash headers only).
+
+Reconciliation scored two ways, settling 03_reconciliation.ipynb's open
+question: "unmatched after text scoring" gets recall 1.000 at precision
+0.060, while the purely structural "no blocking candidate within a cent
+and 0-3 days" gets precision 1.000 / recall 0.988 on the ledger side and
+1.000 / 0.987 on the bank side. That confirms Section 9's blind diagnosis
+against labels - the loss was scoring, not blocking - and the structural
+variant is what the layered system uses.
+
+Scoreboard B (supervised, optimistic): LR 0.172/0.695/AP 0.405, RF
+0.748/0.554/AP 0.606, XGB 0.440/0.621/AP 0.638. Labels are worth ~3x
+average precision over the best blind method on the same rows. Addressable
+recall 0.705-0.833 vs unaddressable 0.041-0.226.
+
+Per-type winners change per row, and once change scoreboard: models win
+round_number (1.000), off_hours_posting (LR 0.961), unusual_account_pair
+(XGB 0.893), structuring (LR 0.872, XGB level at 0.847); blind
+reconciliation wins
+unmatched_bank 0.988 vs <=0.171 for every model, with zero false
+positives. LR's per-type "wins" are bought with an 18.2% flag rate and
+4,312 false positives, so recall is always read next to the flag-rate
+column.
+
+Layered system (the notebook's main argument - method choice follows error
+structure, not model sophistication): L1 SQL balance check (GROUP BY +
+HAVING) scores 1.000/1.000 on unbalanced; L2 SQL duplicate self-join
+(same employee/account-set/amount within 5 days, prior.header_id <
+e.header_id so only the later entry is flagged) scores recall 1.000 /
+precision 0.723, its 53 false positives being genuine repeat postings; L3
+reconciliation-by-blocking scores 0.976/0.988. Stacked with XGBoost at the
+same threshold, recall goes 0.621 -> 0.835 AND precision 0.440 -> 0.502
+for 326 extra flags - precision rises because the added flags are nearly
+all true positives. Per-type delta is +0.957 duplicate, +0.927
+unmatched_bank, +0.908 unbalanced, ~0.000 on the behavioural types.
+
+Combined scoring - negative result, reported as such: soft-vote ensemble
+AP 0.6373 < XGBoost alone 0.6375, rank-average 0.6123; the unsupervised
+rule union reaches recall 0.504 but F1 falls to 0.208 (vs 0.269 for the
+best single blind method), and the cross-scoreboard union gives recall
+0.749 at F1 0.274 (vs XGB's 0.515 and RF's 0.636). The soft-vote's F1 edge
+at the arbitrary 0.50 cut (0.524 vs XGB 0.515) is called out as a
+calibration artifact, not a win - both trail RF there, and AP still
+favours XGB. Ensembling models that read the same
+23 features adds opinions, not information; the layered stack works
+because its layers read different inputs entirely.
+
+Threshold selection: cost model is 5 analyst-minutes per false positive
+against an expected 480 x 20% = 96 minutes per miss, i.e. ~19:1, giving
+threshold 0.57 (recall 0.610, precision 0.573, ~8 analyst-hours/month).
+The undiscounted 96:1 reading is kept in the notebook because it is
+instructive - it picks threshold 0.10 and flags 91% of the ledger, which
+is what any linear cost model does without an escalation probability and a
+capacity constraint. F1-optimal (0.79) is argued against explicitly: it
+implicitly prices a missed error at ~31 analyst-minutes. A 5%-review-budget
+capacity check supports thresholds down to 0.56, and the chosen 0.57 fits
+inside it (4.8% flag rate; the full layered stack at 6.0% sits marginally
+over). Final configuration (SQL layers + XGBoost @ 0.57): recall 0.830,
+precision 0.627, F1 0.715, ~9 analyst-hours/month, >=0.79 recall on every
+error type except backdated.
+
+Threshold stability is itself a finding: the is_period_end alignment (see
+below) moved the cost-optimal threshold 0.46 -> 0.57 while moving AP by
+0.001, so the cost surface is shallow across ~0.45-0.60 and the operating
+point is reported as a band to be reviewed against realised workload, not
+as a two-decimal constant.
+
+backdated is the one real remaining gap: 0.260 against a measured design
+ceiling of 0.838 (best hard-tier recall by any method: LR 0.346). Closing
+the gap needs features journal_entry_features still doesn't have:
+post_lag_days against the poster's own lag history rather than a global
+threshold, and an interaction over the three risk drivers rather than
+three independent flags.
+
+**Feature alignment fix (done after the first Phase 5 run).**
+sql/02_features.sql's period-end feature was is_last_two_days (the last 2
+CALENDAR days of the fiscal period) while the generator weights backdating
+selection on dim_date.is_month_end (the last 3 BUSINESS days). Measuring
+the undetectable backdated slice through the mismatched proxy gave ~42%
+against the generator's actual UNDETECTABLE_FRAC of 17.5%, which would
+have understated the ceiling to ~0.58. The feature is now
+`is_period_end = dim_date.is_month_end`, keyed off journal_header.date_key
+exactly as seed_backdated_errors keys it; days_from_period_end is
+unchanged (continuous distance, not the binary driver). Feature table
+rebuilt, notebooks 02/04/05 re-executed, 0 errors. Supervised numbers moved
+by less than a point - XGB 0.448/0.626/AP 0.6385 -> 0.440/0.621/AP 0.6375,
+RF 0.739/0.555 -> 0.748/0.554, LR unchanged at 0.172/0.695 - i.e. the fix
+mattered for the honesty of the ceiling measurement, not for detection
+performance. All numbers above are post-alignment.
+
+Limitations section covers synthetic-data provenance, labels recording the
+seeding mechanism rather than fraud, the backdated ceiling, the
+reconciliation ceiling (a candidate_ref construction choice, not a
+rapidfuzz limit), the description_length leak and the fact that it had
+distorted the Phase 3 EDA hypothesis verdict before the fix, employee
+concentration (39 posters, top 15 = 88.6%, busiest single = 19.8%), the
+single seed/split with no variance estimate, and the fact that the blind
+methods are fitted over the whole ledger including test rows.
+
+Next: Phase 6, Power BI (/powerbi, directory not created yet). Section 9
+of 05_evaluation.ipynb lists exactly which figures each DAX measure has to
+be validated against - per-type/per-tier pair-level recall (pair-level
+accounting must be reproduced in DAX, not replaced with a header-level
+DISTINCTCOUNT), the operating point, analyst_hours_per_month, and layer
+attribution.
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
