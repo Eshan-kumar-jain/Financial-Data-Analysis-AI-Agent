@@ -73,6 +73,16 @@ Scope - what this MCP is and isn't for in this project:
   that SQL before it's used on a report page - run both, compare the
   numbers, and record the comparison (which SQL query, which DAX measure,
   match or mismatch) rather than trusting the DAX in isolation.
+- `eval_entry_flag.score` is **not comparable across methods** - each
+  family puts a different quantity in that one column (Benford a MAD in
+  percentage points, segmented z a `|z|`, IQR a distance in IQRs past the
+  fence, Isolation Forest a negated `decision_function`, the models a
+  probability in 0-1). Any DAX measure that reads `score` must be
+  filtered to a single `method_name`. Never SUM, AVERAGE, MAX or rank
+  `score` across methods, and never put two methods' scores on one axis -
+  the result is arithmetic over incompatible units and it will look
+  plausible. Counting flags (`is_flagged`) is the cross-method
+  comparison; `score` is a within-method one.
 
 ## Hard rules
 - `ground_truth` is labels only. It must never be joined into a feature
@@ -83,7 +93,7 @@ Scope - what this MCP is and isn't for in this project:
   catch, the recall number is meaningless.
 
 ## Structure
-/sql        staging, star schema, feature table
+/sql        staging, star schema, feature table, eval output tables
 /notebooks  01_eda, 02_methods, 03_reconciliation, 04_supervised, 05_evaluation
 /data       generation scripts, ground truth
 /powerbi    .pbix and DAX notes
@@ -123,7 +133,8 @@ Scope - what this MCP is and isn't for in this project:
   below 100%.
 
 ## Current phase
-Phases 2-5 done, Phase 6 (Power BI) is next - see the end of this section.
+Phases 2-5 done, evaluation outputs published to Postgres (Phase 5b),
+Phase 6 (Power BI) is next - see the end of this section.
 
 Phase 2 done - feature table built in sql/02_features.sql (journal_entry_
 features, one row per journal_header, 113,981 rows, no ground_truth join).
@@ -383,12 +394,71 @@ concentration (39 posters, top 15 = 88.6%, busiest single = 19.8%), the
 single seed/split with no variance estimate, and the fact that the blind
 methods are fitted over the whole ledger including test rows.
 
+Phase 5b done - evaluation outputs written back to Postgres so Power BI
+reads the database rather than a CSV export. DDL in sql/03_eval_outputs.sql
+(drop/recreate, re-runnable), filled by Section 10 of
+notebooks/05_evaluation.ipynb from the same in-memory series every Section
+2-7 number is computed from - not scraped out of the rounded display
+frames, so a dashboard figure cannot drift from the notebook's arithmetic.
+Six tables:
+
+- eval_method (16 rows) - method dimension: family (unsupervised/
+  supervised/layer/combined/final), scoreboard A/B (NULL for layers and
+  combinations - they are comparisons, not a third ranking), threshold,
+  note.
+- eval_entry (28,695) - one test header: fiscal_period, date_key,
+  employee_key, total_amount, is_error, n_labels, final_flag,
+  final_outcome (TP 1,073 / FP 637 / FN 220 / TN 26,765).
+- eval_entry_label (1,297 pairs, 1,293 headers) - the pair grain, taken
+  straight off the notebook's `pairs` frame. This is what makes per-type
+  recall pair-level in DAX.
+- eval_entry_flag (459,120 = 16 methods x 28,695) - long, not 16 flag
+  columns, so one DAX measure serves every method behind a slicer.
+  is_flagged, is_covered, score, outcome. score is NULL outside a
+  method's coverage and is NOT comparable across methods (Benford MAD,
+  |z|, IQR distance, negated decision_function, probability all share the
+  column) - rank within a method, never average across them.
+- eval_method_score (208) - the scoreboard, long by slice_type
+  (overall 16 / error_type 128 / detectability 48 / addressability 16).
+  precision, f1 and average_precision are NULL on every non-'overall'
+  row: a false positive has no error_type, so there is no honest per-type
+  precision denominator. precision_vs_slice (true positives of that type
+  over the method's TOTAL flags) is the defined alternative and is only
+  flattering to a targeted layer, which is the point of it.
+  addressability rows are emitted only for the unsupervised and
+  supervised families, since the two lists differ (Scoreboard A addresses
+  unmatched_bank via reconciliation, B does not) and the split is
+  meaningless for a stack built to cover what a model cannot address.
+- eval_threshold_sweep (99) - the cost curve for XGBoost across the
+  0.01-0.99 grid, with is_chosen on 0.57 and cost_fn_fp_ratio stored on
+  every row so a reader who disagrees with the 19:1 assumption can see
+  which one produced the pick.
+
+These are REPORTING tables and they contain labels (is_error,
+eval_entry_label, every precision/recall column derive from
+ground_truth). Showing recall without labels is impossible, so this is
+intended - but they must never be joined into journal_entry_features or
+used as a model input. Routing ground_truth through a differently-named
+table does not stop it being ground_truth. The warning is repeated at the
+top of sql/03_eval_outputs.sql and in Section 10's intro.
+
+Section 10 ends with a parity check that re-reads the written tables and
+asserts against the notebook: all 16 methods' precision/recall match to
+3dp, per-type pair-level recall matches Section 7 for all 8 error types,
+and the operating point round-trips (threshold 0.57, recall 0.610,
+precision 0.573, 8.2 analyst-hours/month for XGBoost alone; the final
+layered system is 1,710 flags at precision 0.627 / recall 0.830 / F1
+0.715). Notebook re-executed end-to-end, 93 cells, 0 errors.
+
 Next: Phase 6, Power BI (/powerbi, directory not created yet). Section 9
 of 05_evaluation.ipynb lists exactly which figures each DAX measure has to
 be validated against - per-type/per-tier pair-level recall (pair-level
 accounting must be reproduced in DAX, not replaced with a header-level
 DISTINCTCOUNT), the operating point, analyst_hours_per_month, and layer
-attribution.
+attribution. Those figures now live in the eval_* tables above, so each
+validation is a DAX result against a SQL query over the same table rather
+than against a number copied out of a notebook cell. The reference SQL
+for pair-level recall is the recall_check_rs query in Section 10.
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
