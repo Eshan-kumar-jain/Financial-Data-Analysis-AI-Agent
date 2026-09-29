@@ -43,6 +43,25 @@ Server: powerbi-modeling-mcp. Must run **locally**, on the same machine as
 Power BI Desktop - a remote/hosted connector cannot work, since its
 localhost resolves to its own server, not this machine.
 
+Registration: Claude Code **local** scope (`-s local`, stored in
+~/.claude.json under this project path), NOT in .mcp.json - so it is not
+committed, and a fresh clone (or a different machine/user) must register it
+again. The binary ships inside the VS Code extension
+analysis-services.powerbi-modeling-mcp (v1.0.0 at time of writing):
+`C:\Users\ESHAN JAIN\.vscode\extensions\analysis-services.powerbi-modeling-mcp-1.0.0-win32-x64\server\powerbi-modeling-mcp.exe`.
+Args `--start --accept-eula` are the extension's own defaults (package.json
+`args` setting, launched as stdio by src/mcpServerManager.ts); --accept-eula
+accepts Microsoft's EULA non-interactively. Re-register with:
+`claude mcp add powerbi-modeling-mcp -s local -- "<exe path>" --start --accept-eula`
+The path embeds the extension version - an extension update changes it and
+breaks the registration; re-run the command with the new path. Check with
+`claude mcp get powerbi-modeling-mcp`.
+Gotcha: ~/.claude.json keys projects by path with case-sensitive drive
+letter, and the VS Code extension opens this folder as `e:/...` while the
+CLI from a shell registers under `E:/...`. The entry must exist under BOTH
+keys (the CLI can't write the lowercase one - copy it by hand), or the
+server shows "Connected" in `claude mcp get` yet never loads in VS Code.
+
 Prerequisite: Power BI Desktop must already be open with the .pbix loaded
 before connecting. The server only detects Desktop instances running on
 localhost - it can't launch or load one for you.
@@ -134,7 +153,8 @@ Scope - what this MCP is and isn't for in this project:
 
 ## Current phase
 Phases 2-5 done, evaluation outputs published to Postgres (Phase 5b),
-Phase 6 (Power BI) is next - see the end of this section.
+Phase 6 (Power BI) in progress - semantic model and core measures built
+and validated against SQL, see the end of this section.
 
 Phase 2 done - feature table built in sql/02_features.sql (journal_entry_
 features, one row per journal_header, 113,981 rows, no ground_truth join).
@@ -450,15 +470,86 @@ precision 0.573, 8.2 analyst-hours/month for XGBoost alone; the final
 layered system is 1,710 flags at precision 0.627 / recall 0.830 / F1
 0.715). Notebook re-executed end-to-end, 93 cells, 0 errors.
 
-Next: Phase 6, Power BI (/powerbi, directory not created yet). Section 9
-of 05_evaluation.ipynb lists exactly which figures each DAX measure has to
-be validated against - per-type/per-tier pair-level recall (pair-level
-accounting must be reproduced in DAX, not replaced with a header-level
-DISTINCTCOUNT), the operating point, analyst_hours_per_month, and layer
-attribution. Those figures now live in the eval_* tables above, so each
-validation is a DAX result against a SQL query over the same table rather
-than against a number copied out of a notebook cell. The reference SQL
-for pair-level recall is the recall_check_rs query in Section 10.
+**Per-slice double-counting bug (found in Phase 6, fixed).** Section 10's
+slice_rows built eval_method_score's error_type/detectability/
+addressability rows with `caught.groupby(...).groups` + `caught.loc[idx]`.
+`pairs` is indexed by header_id, which repeats for a doubly-labelled
+header, so .loc returned both of that header's rows and every flagged
+2-label header was counted twice in the slice numerator (denominator was
+right). Symptom: Reconciliation / unmatched_bank stored at 85 caught of 82
+pairs, recall 1.037; 39 per-type cells inflated in total, all on
+unmatched_bank or the partner label of the 4 test-period 2-label headers
+(2 structuring, 1 off_hours_posting, 1 unusual_account_pair). Fix: iterate
+the groups directly (`for value, hits in caught.groupby(keys.values)`).
+Scope: ONLY the non-'overall' rows of eval_method_score (recall,
+true_positives, precision_vs_slice). The 'overall' rows never touch
+`pairs`; Section 7 and every other per-type table in the notebook go
+through recall_by (column-wise groupby().mean(), no label lookup) and were
+never wrong - no reported figure changed. Why the parity check missed it:
+it read back the 'overall' rows and recall_check_rs, never the per-slice
+rows, so the one code path with the bug had no test. A round-trip check
+only covers the rows it actually reads. Section 10 now has a
+`%%sql slice_check_rs` cell rebuilding every error_type/detectability row
+from eval_entry_flag x eval_entry_label, and the parity cell asserts exact
+counts on those, reconciles the addressability buckets against them, and
+asserts no recall > 1 (192 per-slice rows pass). A markdown cell after the
+parity check records the bug and the gap. Notebook re-executed, 95 cells,
+0 errors.
+
+**Rerunning notebook 05 recreates the eval_* tables** (drop/recreate via
+Section 10), which drops any per-table grants. Power BI connects as the
+`powerbi` role; after the rerun above, refresh failed on all eight tables
+until SELECT was re-granted. Fixed with `GRANT SELECT ON ALL TABLES IN
+SCHEMA public TO powerbi` plus `ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT SELECT ON TABLES TO powerbi` - the default privileges are what keep
+the role working across future recreations. Caveat: without FOR ROLE,
+ALTER DEFAULT PRIVILEGES only covers tables created by the role that ran
+it - it must be the same role as the notebook's PGUSER. If refresh
+fails with a permission error after a rerun, check those first.
+
+Phase 6 in progress - Power BI semantic model in powerbi/
+anomaly_detection.pbix, built through the MCP. Model: 8 tables (dim_date,
+dim_employee, eval_entry, eval_entry_flag, eval_entry_label, eval_method,
+eval_method_score, eval_threshold_sweep; "public " prefix stripped;
+dim_account dropped - no eval_* table carries account_key), 7
+relationships, dim_date marked as date table. The auto-detected
+eval_method[threshold] -> eval_threshold_sweep[threshold] relationship was
+deleted: the sweep is XGBoost-only, so it mapped z-score/IQR/LR/RF cutoffs
+onto XGBoost's curve, on a float key. Auto date/time is switched off in
+Desktop by hand.
+
+18 measures, every one blank unless exactly one method is in context
+(hidden [Methods In Context] guard - never aggregate across methods):
+Header-level (eval_entry_flag: Flags, True Positives, False Positives,
+False Negatives, Precision, Recall, F1, Flag Rate, Analyst Hours per
+Month), Pair-level (eval_entry_label: Label Pairs, Pairs Caught, Pair
+Recall, Precision vs Slice), Operating point (eval_threshold_sweep: Chosen
+Threshold/Recall/Precision/Analyst Hours per Month). Pairs Caught uses
+TREATAS to push the method's flagged header_ids onto
+eval_entry_label[header_id] - label filters (error_type/detectability)
+live on eval_entry_label and do not reach eval_entry_flag through the
+single-direction relationships, and TREATAS combines the two without a
+bidirectional relationship. Counts pairs, not headers.
+
+scripts/validate_dax.py is the artefact behind "every DAX measure validated
+against SQL". It compares three sources: DAX results (captured through the
+MCP and pasted into the script's DAX_* constants - Python cannot query the
+Desktop model; the four DAX queries are in its docstring), SQL recomputed
+from the eval_* base rows (the reference; recall_check_rs generalised to
+all 16 methods), and the stored eval_method_score rows. Checks: header-
+level flags/TP/FP/FN for 16 methods, precision/recall/analyst-hours vs
+stored, 16 x 8 pair-level caught/n_pairs plus stored recall and
+precision_vs_slice, Final layered system per tier, and the operating point
+(including the sweep's chosen row vs the L4 method's own flag rows). Exit
+code non-zero on any mismatch. Run from the repo root with the venv:
+`.venv/Scripts/python.exe scripts/validate_dax.py`. It is what caught the
+per-slice bug (39 mismatches before the fix, 0 after). Last run
+2026-09-30 against the refreshed model: 0 mismatches. After any model or
+data change, re-run the DAX queries, update the constants, re-run.
+
+Still open in Phase 6: layer attribution measures (the one Section 9
+figure not yet built), powerbi/ DAX notes, and report pages (manual in
+Desktop).
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
