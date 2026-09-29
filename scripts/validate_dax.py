@@ -26,6 +26,13 @@ Operating point display folders):
              eval_method[method_name] = "Final layered system"
   op:      EVALUATE ROW("thr", [Chosen Threshold], "rec", [Chosen Recall],
              "prec", [Chosen Precision], "hrs", [Chosen Analyst Hours per Month])
+  layers:  EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(eval_method[method_name],
+             "fc_flags", [First-Catch Flags], "fc_tp", [First-Catch True Positives],
+             "u_flags", [Unique Flags], "u_tp", [Unique True Positives]),
+             eval_method[method_family] = "layer")
+  layer pairs: EVALUATE CALCULATETABLE(SUMMARIZECOLUMNS(eval_method[method_name],
+             eval_entry_label[error_type], "fc_pairs", [First-Catch Pairs Caught],
+             "u_pairs", [Unique Pairs Caught]), eval_method[method_family] = "layer")
 
 Exit code is non-zero on any mismatch.
 
@@ -92,6 +99,23 @@ DAX_PAIRS_DENOM = [82, 274, 154, 242, 150, 138, 76, 181]
 DAX_TIER_FINAL = {"easy": (420, 415), "medium": (330, 290), "hard": (547, 372)}
 DAX_OP = (0.57, 0.6102088167053364, 0.5729847494553377, 8.166666666666666)
 
+# --- DAX results: layer attribution (Layer attribution display folder) ------
+# (first-catch flags, first-catch TP, unique flags, unique TP)
+DAX_LAYER = {
+    "L1 balance check (SQL aggregate)":  (76, 76, 71, 71),
+    "L2 duplicate self-join (SQL)":      (191, 142, 183, 134),
+    "L3 reconciliation (blocking join)": (82, 82, 78, 78),
+    "L4 XGBoost @ 0.57":                 (1361, 773, 1361, 773),
+}
+# per error_type, TYPES order: (first-catch pairs list, unique pairs list)
+DAX_LAYER_PAIRS = {
+    "L1 balance check (SQL aggregate)":  ([0, 0, 0, 0, 0, 0, 76, 0],    [0, 0, 0, 0, 0, 0, 71, 0]),
+    "L2 duplicate self-join (SQL)":      ([0, 4, 0, 0, 0, 138, 0, 0],   [0, 0, 0, 0, 0, 134, 0, 0]),
+    "L3 reconciliation (blocking join)": ([81, 1, 1, 2, 1, 0, 0, 0],    [78, 0, 0, 2, 0, 0, 0, 0]),
+    "L4 XGBoost @ 0.57":                 ([0, 269, 121, 203, 133, 0, 0, 47],
+                                          [0, 269, 121, 203, 133, 0, 0, 47]),
+}
+
 # --- SQL -------------------------------------------------------------------
 SQL_HEADER = """
 -- Header-level confusion counts per method, straight off the long flag fact.
@@ -139,7 +163,63 @@ FROM eval_method_score
 WHERE slice_type IN ('overall', 'error_type')
 """
 
+SQL_LAYER_HEADER = """
+-- Layer attribution, computed a different way from the DAX (which uses
+-- EXCEPT over header sets). Here each header is reduced to two facts about
+-- the four layers of the final stack:
+--   first_layer = the lowest sort_order among layers that flagged it
+--                 (running order L1 -> L4) -> first-catch credit
+--   n_layers    = how many layers flagged it -> unique credit when = 1,
+--                 and then only_layer names that one layer
+WITH per_header AS (
+    SELECT f.header_id,
+           MIN(m.sort_order) FILTER (WHERE f.is_flagged) AS first_layer,
+           COUNT(*)          FILTER (WHERE f.is_flagged) AS n_layers,
+           MAX(m.sort_order) FILTER (WHERE f.is_flagged) AS only_layer
+    FROM eval_entry_flag f
+    JOIN eval_method     m ON m.method_name = f.method_name
+    WHERE m.method_family = 'layer'
+    GROUP BY f.header_id
+)
+SELECT m.method_name,
+       COUNT(*) FILTER (WHERE h.first_layer = m.sort_order)                   AS fc_flags,
+       COUNT(*) FILTER (WHERE h.first_layer = m.sort_order AND e.is_error)    AS fc_tp,
+       COUNT(*) FILTER (WHERE h.n_layers = 1 AND h.only_layer = m.sort_order) AS u_flags,
+       COUNT(*) FILTER (WHERE h.n_layers = 1 AND h.only_layer = m.sort_order
+                          AND e.is_error)                                     AS u_tp
+FROM eval_method m
+CROSS JOIN per_header h
+JOIN eval_entry e ON e.header_id = h.header_id
+WHERE m.method_family = 'layer'
+GROUP BY m.method_name
+"""
+
+SQL_LAYER_PAIRS = """
+-- Same reduction, then out to the pair grain: one row per label pair,
+-- credited to its header's first / only layer.
+WITH per_header AS (
+    SELECT f.header_id,
+           MIN(m.sort_order) FILTER (WHERE f.is_flagged) AS first_layer,
+           COUNT(*)          FILTER (WHERE f.is_flagged) AS n_layers,
+           MAX(m.sort_order) FILTER (WHERE f.is_flagged) AS only_layer
+    FROM eval_entry_flag f
+    JOIN eval_method     m ON m.method_name = f.method_name
+    WHERE m.method_family = 'layer'
+    GROUP BY f.header_id
+)
+SELECT m.method_name, l.error_type,
+       COUNT(*) FILTER (WHERE h.first_layer = m.sort_order)                   AS fc_pairs,
+       COUNT(*) FILTER (WHERE h.n_layers = 1 AND h.only_layer = m.sort_order) AS u_pairs
+FROM eval_method m
+CROSS JOIN eval_entry_label l
+JOIN per_header h ON h.header_id = l.header_id
+WHERE m.method_family = 'layer'
+GROUP BY m.method_name, l.error_type
+"""
+
 with engine.connect() as c:
+    layer_hdr = {r.method_name: r for r in c.execute(text(SQL_LAYER_HEADER))}
+    layer_pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_LAYER_PAIRS))}
     hdr = {r.method_name: r for r in c.execute(text(SQL_HEADER))}
     pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_PAIRS))}
     tier = {r.detectability: r for r in c.execute(text(SQL_TIER))}
@@ -210,6 +290,39 @@ xok = close(l4.tp / (l4.tp + l4.fn), op.recall) and close(l4.tp / (l4.tp + l4.fp
 print(f"sweep@0.57 vs L4 flag rows: {'MATCH' if xok else 'MISMATCH'}")
 if not xok:
     mismatches.append(("op-vs-L4",))
+
+print("\n=== 5. Layer attribution: first-catch and unique, DAX vs SQL ===")
+print(f"{'layer':36} {'fc_flags':>8} {'fc_tp':>6} {'u_flags':>8} {'u_tp':>6}  result")
+for m, dax in DAX_LAYER.items():
+    s = layer_hdr[m]
+    sql = (s.fc_flags, s.fc_tp, s.u_flags, s.u_tp)
+    ok = dax == sql
+    if not ok:
+        mismatches.append(("layer", m, dax, sql))
+    print(f"{m:36} {dax[0]:>8} {dax[1]:>6} {dax[2]:>8} {dax[3]:>6}  {'MATCH' if ok else f'MISMATCH sql={sql}'}")
+
+n_cells = n_ok = 0
+for m, (fc_list, u_list) in DAX_LAYER_PAIRS.items():
+    for t, dfc, du in zip(TYPES, fc_list, u_list):
+        s = layer_pairs.get((m, t))
+        sql = (s.fc_pairs, s.u_pairs) if s else (0, 0)
+        n_cells += 1
+        n_ok += (dfc, du) == sql
+        if (dfc, du) != sql:
+            mismatches.append(("layer-pair", m, t, (dfc, du), sql))
+print(f"layer x error_type: {n_ok}/{n_cells} cells match (first-catch and unique pairs)")
+
+# First-catch is a partition of the final stack's flags, so it must add up
+# to the Final layered system exactly - header-level and per type.
+fin_hdr = hdr["Final layered system"]
+sum_ok = (sum(v[0] for v in DAX_LAYER.values()) == fin_hdr.flags
+          and sum(v[1] for v in DAX_LAYER.values()) == fin_hdr.tp)
+for i, t in enumerate(TYPES):
+    sum_ok &= sum(v[0][i] for v in DAX_LAYER_PAIRS.values()) == pairs[("Final layered system", t)].caught
+if not sum_ok:
+    mismatches.append(("first-catch-sum",))
+print(f"first-catch sums to Final layered system (flags {fin_hdr.flags}, TP {fin_hdr.tp}, "
+      f"per-type caught): {'MATCH' if sum_ok else 'MISMATCH'}")
 
 print(f"\nTOTAL MISMATCHES: {len(mismatches)}")
 for x in mismatches:

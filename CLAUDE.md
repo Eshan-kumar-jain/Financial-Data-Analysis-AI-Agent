@@ -547,9 +547,25 @@ per-slice bug (39 mismatches before the fix, 0 after). Last run
 2026-09-30 against the refreshed model: 0 mismatches. After any model or
 data change, re-run the DAX queries, update the constants, re-run.
 
-Still open in Phase 6: layer attribution measures (the one Section 9
-figure not yet built), powerbi/ DAX notes, and report pages (manual in
-Desktop).
+Layer attribution (the last Section 9 figure) is built: 6 measures in the
+"Layer attribution" folder - First-Catch Flags/True Positives/Pairs Caught
+(credit to the earliest layer in running order L1 -> L4 by
+eval_method[sort_order]; partitions the stack, sums exactly to the Final
+layered system's 1,710 flags / 1,073 TP / per-type caught) and Unique
+Flags/True Positives/Pairs Caught (caught by this layer and no other -
+what removing it would cost; does not sum). Blank unless one 'layer'
+method is selected. validate_dax.py section 5 checks them against SQL
+computed a different way (per-header MIN(sort_order)/COUNT over flagging
+layers, not EXCEPT over sets): 4/4 layers, 32/32 layer x type cells, the
+partition sum - 0 mismatches. Result: only 17 of 1,710 flagged headers are
+caught by 2+ layers; L1/L2/L3 own unbalanced/duplicate/unmatched_bank and
+L4 first-catches none of those three.
+
+powerbi/dax_notes.md records the model decisions, the rules every measure
+follows, and a measure -> validating-SQL -> result table for all 24
+measures, plus the re-validation procedure and report-page usage notes.
+
+Still open in Phase 6: report pages (manual in Desktop).
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
