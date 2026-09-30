@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "eval_method.method_name",
-              "nativeQueryRef": "method_name"
+              "nativeQueryRef": "method_name",
+              "displayName": "Layer"
             }
           ]
         },

@@ -3,9 +3,9 @@
   "name": "mtx017",
   "position": {
     "x": 24,
-    "y": 336,
+    "y": 356,
     "z": 3000,
-    "height": 364,
+    "height": 344,
     "width": 1232,
     "tabOrder": 3000
   },
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "eval_method.method_name",
-              "nativeQueryRef": "method_name"
+              "nativeQueryRef": "method_name",
+              "displayName": "Method"
             }
           ]
         },

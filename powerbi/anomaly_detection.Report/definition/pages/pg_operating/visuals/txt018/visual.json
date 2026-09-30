@@ -31,7 +31,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Cost model: 5 analyst-minutes per false positive vs 96 expected minutes per miss (480 x 20% escalation) = 19:1. The cost surface is shallow - treat 0.57 as a band (~0.50-0.60), not a constant.",
+                    "value": "Cost model: 5 analyst-minutes per false positive vs 96 expected minutes per miss (480 x 20% escalation) = 19:1. The cost surface is shallow - treat 0.57 as a band (~0.45-0.60), not a constant.",
                     "textStyle": {
                       "fontSize": "10pt",
                       "fontWeight": "normal",

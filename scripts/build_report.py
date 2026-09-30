@@ -212,11 +212,11 @@ def table(x, y, w, h, fields, title, subtitle=None, filters=None, sort_field=Non
     return container(vid("tbl"), x, y, w, h, visual, filters)
 
 
-def matrix(x, y, w, h, rows, columns, value, title, subtitle=None, filters=None, heat=None):
+def matrix(x, y, w, h, rows, columns, value, title, subtitle=None, filters=None, heat=None, row_label=None):
     visual = {
         "visualType": "pivotTable",
         "query": {"queryState": {
-            "Rows": {"projections": [proj(rows)]},
+            "Rows": {"projections": [proj(rows, row_label)]},
             "Columns": {"projections": [proj(columns)]},
             "Values": {"projections": [proj(value)]},
         }, "sortDefinition": {"sort": [{"field": rows, "direction": "Ascending"}], "isDefaultSort": False}},
@@ -291,7 +291,7 @@ v = [header("Layered detection - who catches what",
 v.append(bar(24, 88, 616, 300, "clusteredBarChart", METHOD,
              [(F("First-Catch Flags"), "First-catch flags"), (F("First-Catch True Positives"), "First-catch true positives")],
              "Flags credited to each layer", "Sums to 1,710 flags / 1,073 true positives",
-             colors=[ORANGE, BLUE], sort_field=METHOD, sort_dir="Ascending"))
+             colors=[ORANGE, BLUE], sort_field=METHOD, sort_dir="Ascending", labels=False))
 v.append(table(656, 88, 600, 300,
                [(METHOD, "Layer"), (F("Flags"), "Flags"), (F("Unique Flags"), "Only this layer"),
                 (F("Unique True Positives"), "Only this layer (TP)")],
@@ -300,7 +300,7 @@ v.append(table(656, 88, 600, 300,
 v.append(matrix(24, 404, 1232, 296, METHOD, ERROR_TYPE, L("First-Catch Pairs Caught"),
                 "Error pairs caught first, by layer and error type",
                 "Each layer owns different error types: the model catches none of unbalanced, duplicate or unmatched_bank first",
-                heat=BLUE))
+                heat=BLUE, row_label="Layer"))
 pages.append(("layers", "Layered detection", v, [in_filter("pgFamLayer2", "eval_method", "method_family", ["layer"])]))
 
 # 3. Method comparison -----------------------------------------------------------
@@ -309,24 +309,24 @@ fields = [(METHOD, "Method"), (F("Precision"), "Precision"), (F("Recall"), "Reca
 v = [header("Method comparison - blind vs labelled",
             "Two scoreboards, deliberately not merged into one ranking: blind methods see no labels, "
             "supervised models were trained on them.")]
-v.append(table(24, 88, 608, 232, fields, "Scoreboard A - unsupervised (realistic)",
+v.append(table(24, 88, 608, 256, fields, "Scoreboard A - unsupervised (realistic)",
                "No labels used; best F1 0.27 (segmented IQR)",
                filters=[in_filter("vfBoardA", "eval_method", "scoreboard", ["A"])], sort_field=METHOD))
-v.append(table(648, 88, 608, 232, fields, "Scoreboard B - supervised (optimistic)",
+v.append(table(648, 88, 608, 256, fields, "Scoreboard B - supervised (optimistic)",
                "Trained on labels; LR's recall is bought with an 18% flag rate",
                filters=[in_filter("vfBoardB", "eval_method", "scoreboard", ["B"])], sort_field=METHOD))
-v.append(matrix(24, 336, 1232, 364, METHOD, ERROR_TYPE, L("Pair Recall"),
+v.append(matrix(24, 356, 1232, 344, METHOD, ERROR_TYPE, L("Pair Recall"),
                 "Recall by method and error type",
                 "Blind methods are amount detectors; models miss what has no feature (unbalanced, duplicate, unmatched_bank)",
                 filters=[in_filter("vfFamAB", "eval_method", "method_family", ["unsupervised", "supervised"])],
-                heat=BLUE))
+                heat=BLUE, row_label="Method"))
 pages.append(("methods", "Method comparison", v, []))
 
 # 4. Operating point ---------------------------------------------------------------
 THR = col("eval_threshold_sweep", "threshold")
 v = [header("Operating point - why XGBoost @ 0.57",
             "Cost model: 5 analyst-minutes per false positive vs 96 expected minutes per miss (480 x 20% escalation) "
-            "= 19:1. The cost surface is shallow - treat 0.57 as a band (~0.50-0.60), not a constant.")]
+            "= 19:1. The cost surface is shallow - treat 0.57 as a band (~0.45-0.60), not a constant.")]
 for i, (m, label) in enumerate([("Chosen Threshold", "Chosen threshold"), ("Chosen Recall", "Recall @ threshold"),
                                 ("Chosen Precision", "Precision @ threshold"),
                                 ("Chosen Analyst Hours per Month", "Analyst hours / month")]):
