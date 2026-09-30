@@ -1,0 +1,170 @@
+table eval_method_score
+	lineageTag: b4c67818-59af-45ff-8deb-9c3f3c0d1340
+
+	column eval_score_id
+		dataType: int64
+		formatString: 0
+		lineageTag: e738d68f-401c-4f1a-aede-26c76b2a76ad
+		summarizeBy: sum
+		sourceColumn: eval_score_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column method_name
+		dataType: string
+		lineageTag: f01cddbd-7f3a-430a-b4e5-0f528cff5e30
+		summarizeBy: none
+		sourceColumn: method_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column slice_type
+		dataType: string
+		lineageTag: 26101567-f11e-4312-b7f2-6d748deb4cc9
+		summarizeBy: none
+		sourceColumn: slice_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column slice_value
+		dataType: string
+		lineageTag: bbfeb426-f417-4ba9-bc1b-c039e936bb17
+		summarizeBy: none
+		sourceColumn: slice_value
+
+		annotation SummarizationSetBy = Automatic
+
+	column n_pairs
+		dataType: int64
+		formatString: 0
+		lineageTag: 19e08fd5-ff11-4c2f-bfa5-32a8b091a4ca
+		summarizeBy: sum
+		sourceColumn: n_pairs
+
+		annotation SummarizationSetBy = Automatic
+
+	column n_flagged
+		dataType: int64
+		formatString: 0
+		lineageTag: be073346-afaa-4f0a-ab0f-119d83985fd7
+		summarizeBy: sum
+		sourceColumn: n_flagged
+
+		annotation SummarizationSetBy = Automatic
+
+	column true_positives
+		dataType: int64
+		formatString: 0
+		lineageTag: 87024aa8-d597-41f9-9a32-7f9ce24ad435
+		summarizeBy: sum
+		sourceColumn: true_positives
+
+		annotation SummarizationSetBy = Automatic
+
+	column false_positives
+		dataType: int64
+		formatString: 0
+		lineageTag: f0a9c9f4-40ec-4ce1-b8bf-84c756995b98
+		summarizeBy: sum
+		sourceColumn: false_positives
+
+		annotation SummarizationSetBy = Automatic
+
+	column false_negatives
+		dataType: int64
+		formatString: 0
+		lineageTag: 70cb6331-0260-4df4-ad6c-f60f9eefb9fe
+		summarizeBy: sum
+		sourceColumn: false_negatives
+
+		annotation SummarizationSetBy = Automatic
+
+	column precision
+		dataType: double
+		lineageTag: e6ded5be-d97f-4591-bf45-5f76d1547664
+		summarizeBy: sum
+		sourceColumn: precision
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column recall
+		dataType: double
+		lineageTag: a71d92c8-34f4-4cbb-91ab-d3e3b870df92
+		summarizeBy: sum
+		sourceColumn: recall
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column f1
+		dataType: double
+		lineageTag: f6249da7-9536-44ef-aac9-2dc53bd96138
+		summarizeBy: sum
+		sourceColumn: f1
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column average_precision
+		dataType: double
+		lineageTag: 7c5ce795-e42e-46c8-8b67-2c9858b26659
+		summarizeBy: sum
+		sourceColumn: average_precision
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column coverage
+		dataType: double
+		lineageTag: 9c925fa3-57c2-424b-9111-d4611b369214
+		summarizeBy: sum
+		sourceColumn: coverage
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column flag_rate
+		dataType: double
+		lineageTag: 56c04f76-4083-4114-a394-31e32b6bfda6
+		summarizeBy: sum
+		sourceColumn: flag_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column precision_vs_slice
+		dataType: double
+		lineageTag: d7f99bcb-d983-4bad-91b2-8f343779cff1
+		summarizeBy: sum
+		sourceColumn: precision_vs_slice
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column analyst_hours_per_month
+		dataType: double
+		lineageTag: 04e7a119-103a-4d5b-a274-50ede7627727
+		summarizeBy: sum
+		sourceColumn: analyst_hours_per_month
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition 'public eval_method_score' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_eval_method_score = Source{[Schema="public",Item="eval_method_score"]}[Data]
+				in
+				    public_eval_method_score
+

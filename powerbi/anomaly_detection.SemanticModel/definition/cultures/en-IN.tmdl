@@ -1,0 +1,429 @@
+cultureInfo en-IN
+
+	linguisticMetadata =
+			{
+			  "Version": "2.0.0",
+			  "Language": "en-US",
+			  "Entities": {
+			    "eval_entry_label.pair_recall": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_label",
+			          "ConceptualProperty": "Pair Recall"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Recall": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.recall": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Recall"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Recall": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.precision": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Precision"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Precision": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.f1": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "F1"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "F1": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.flags": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Flags"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Entries flagged": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        },
+			        {
+			          "Flags": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.analyst_hours_per_month": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Analyst Hours per Month"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Analyst hours / month": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        },
+			        {
+			          "Analyst hrs / month": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.firstcatch_flags": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "First-Catch Flags"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "First-catch flags": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.firstcatch_true_positives": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "First-Catch True Positives"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "First-catch true positives": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.unique_flags": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Unique Flags"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Only this layer": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.unique_true_positives": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Unique True Positives"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Only this layer (TP)": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.flag_rate": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "Flag Rate"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Flag rate": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        },
+			        {
+			          "Share of ledger flagged": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.true_positives": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "True Positives"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Errors found": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_entry_flag.false_positives": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_entry_flag",
+			          "ConceptualProperty": "False Positives"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "False alarms": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_method.method_name": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_method",
+			          "ConceptualProperty": "method_name"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Layer": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        },
+			        {
+			          "Method": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_threshold_sweep.chosen_threshold": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_threshold_sweep",
+			          "ConceptualProperty": "Chosen Threshold"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Chosen threshold": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_threshold_sweep.chosen_recall": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_threshold_sweep",
+			          "ConceptualProperty": "Chosen Recall"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Recall @ threshold": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_threshold_sweep.chosen_precision": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_threshold_sweep",
+			          "ConceptualProperty": "Chosen Precision"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Precision @ threshold": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    },
+			    "eval_threshold_sweep.chosen_analyst_hours_per_month": {
+			      "Definition": {
+			        "Binding": {
+			          "ConceptualEntity": "eval_threshold_sweep",
+			          "ConceptualProperty": "Chosen Analyst Hours per Month"
+			        }
+			      },
+			      "State": "Generated",
+			      "Terms": [
+			        {
+			          "Analyst hours / month": {
+			            "State": "Suggested",
+			            "Source": {
+			              "Type": "External",
+			              "Agent": "PowerBI.VisualColumnRename"
+			            },
+			            "Weight": 0.9
+			          }
+			        }
+			      ]
+			    }
+			  }
+			}
+		contentType: json
+

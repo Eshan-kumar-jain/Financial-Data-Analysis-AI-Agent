@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.1.0/schema.json",
+  "pageOrder": [
+    "pg_overview",
+    "pg_layers",
+    "pg_methods",
+    "pg_operating",
+    "pg_workload"
+  ],
+  "activePageName": "pg_overview"
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "txt014",
+  "position": {
+    "x": 24,
+    "y": 12,
+    "z": 0,
+    "height": 64,
+    "width": 1232,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Method comparison - blind vs labelled",
+                    "textStyle": {
+                      "fontSize": "20pt",
+                      "fontWeight": "bold",
+                      "color": "#0b0b0b"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Two scoreboards, deliberately not merged into one ranking: blind methods see no labels, supervised models were trained on them.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "normal",
+                      "color": "#52514e"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

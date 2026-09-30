@@ -1,0 +1,104 @@
+table dim_date
+	lineageTag: 5ddabd1c-bb37-4871-b632-b88bad2f1e6f
+	dataCategory: Time
+
+	column date_key
+		dataType: int64
+		formatString: 0
+		lineageTag: 70ff8923-72e2-4d93-9ddf-f0ff22cb7ff9
+		summarizeBy: none
+		sourceColumn: date_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column calendar_date
+		dataType: dateTime
+		isUnique
+		formatString: Long Date
+		lineageTag: 305f90c1-b336-4309-89da-7aa1b26f8937
+		summarizeBy: none
+		sourceColumn: calendar_date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column year
+		dataType: int64
+		formatString: 0
+		lineageTag: 1ef34ef4-f10f-4db0-a90f-4efde18990b8
+		summarizeBy: sum
+		sourceColumn: year
+
+		annotation SummarizationSetBy = Automatic
+
+	column month
+		dataType: int64
+		formatString: 0
+		lineageTag: 0a2a8505-4ce9-4555-98cf-1e3d125b9a19
+		summarizeBy: sum
+		sourceColumn: month
+
+		annotation SummarizationSetBy = Automatic
+
+	column day
+		dataType: int64
+		formatString: 0
+		lineageTag: d7f889ee-7b77-4b27-bfa0-1028ac8f5cb2
+		summarizeBy: sum
+		sourceColumn: day
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_of_week
+		dataType: int64
+		formatString: 0
+		lineageTag: d7565a34-f4be-44fc-b8fa-ad6e3c8cda82
+		summarizeBy: sum
+		sourceColumn: day_of_week
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_name
+		dataType: string
+		lineageTag: 92a5bb76-0692-476b-a1e0-83b203cdb87d
+		summarizeBy: none
+		sourceColumn: day_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_weekend
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: aa7b2060-c52f-4440-83aa-c625a1c1457e
+		summarizeBy: none
+		sourceColumn: is_weekend
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_month_end
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 04138e0d-0ac3-4284-bc18-11a73d7536cd
+		summarizeBy: none
+		sourceColumn: is_month_end
+
+		annotation SummarizationSetBy = Automatic
+
+	column fiscal_period
+		dataType: string
+		lineageTag: d1adcb99-f561-4ac9-a409-56349836ef74
+		summarizeBy: none
+		sourceColumn: fiscal_period
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public dim_date' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_dim_date = Source{[Schema="public",Item="dim_date"]}[Data]
+				in
+				    public_dim_date
+

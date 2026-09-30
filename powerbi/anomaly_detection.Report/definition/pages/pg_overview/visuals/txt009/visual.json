@@ -1,0 +1,61 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "txt009",
+  "position": {
+    "x": 800,
+    "y": 460,
+    "z": 8000,
+    "height": 240,
+    "width": 456,
+    "tabOrder": 8000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "What to read here",
+                    "textStyle": {
+                      "fontSize": "12pt",
+                      "fontWeight": "bold",
+                      "color": "#0b0b0b"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Seven of eight error types are caught at 0.79 or better. Backdated is the gap: 0.26 against a measured design ceiling of 0.84 - the features to close it (lag against the poster's own history, an interaction over the three risk drivers) are not in the feature table yet.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "normal",
+                      "color": "#52514e"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Recall is only half the story: every flag costs ~5 analyst-minutes, so read it next to the workload card. Figures validated DAX vs SQL (scripts/validate_dax.py).",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "normal",
+                      "color": "#52514e"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

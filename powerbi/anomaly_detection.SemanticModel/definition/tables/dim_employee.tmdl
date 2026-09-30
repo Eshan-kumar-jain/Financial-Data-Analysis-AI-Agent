@@ -1,0 +1,79 @@
+table dim_employee
+	lineageTag: 13bb8d89-ad14-40ae-8fda-d85c032ad31d
+
+	column employee_key
+		dataType: int64
+		formatString: 0
+		lineageTag: 9bf8ddc0-5360-40d6-a5d5-f7ecaad11087
+		summarizeBy: none
+		sourceColumn: employee_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column employee_id
+		dataType: string
+		lineageTag: 2ae6078f-a05f-48cc-88df-e2d62019dd15
+		summarizeBy: none
+		sourceColumn: employee_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column employee_name
+		dataType: string
+		lineageTag: 64ccea41-3adf-49d1-bda7-71bd4e52735c
+		summarizeBy: none
+		sourceColumn: employee_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column department
+		dataType: string
+		lineageTag: ff77a11d-44c2-42b8-8a8f-69ce11bf4796
+		summarizeBy: none
+		sourceColumn: department
+
+		annotation SummarizationSetBy = Automatic
+
+	column role
+		dataType: string
+		lineageTag: eaaa814a-8aa9-48b6-85b2-2b0f3d07ea12
+		summarizeBy: none
+		sourceColumn: role
+
+		annotation SummarizationSetBy = Automatic
+
+	column seniority_level
+		dataType: string
+		lineageTag: 6a8b3415-0ad0-454c-97d0-768dc5ce0a5c
+		summarizeBy: none
+		sourceColumn: seniority_level
+
+		annotation SummarizationSetBy = Automatic
+
+	column typical_start_hour
+		dataType: int64
+		formatString: 0
+		lineageTag: 6517d1f3-10b2-4d6d-9f5f-be19e9eaa615
+		summarizeBy: none
+		sourceColumn: typical_start_hour
+
+		annotation SummarizationSetBy = Automatic
+
+	column typical_end_hour
+		dataType: int64
+		formatString: 0
+		lineageTag: 1d5ddd65-8671-45fe-b482-1c9749c88aa2
+		summarizeBy: none
+		sourceColumn: typical_end_hour
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public dim_employee' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_dim_employee = Source{[Schema="public",Item="dim_employee"]}[Data]
+				in
+				    public_dim_employee
+

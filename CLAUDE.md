@@ -86,8 +86,9 @@ Scope - what this MCP is and isn't for in this project:
   (relationships, columns, measure definitions), and cross-checking a
   measure against the equivalent SQL from `notebooks/05_evaluation.ipynb`.
 - **Do not use it for**: report page layout, visuals, slicers, or
-  formatting - all of that is manual in Desktop, the MCP has no reach into
-  the report canvas.
+  formatting - the MCP has no reach into the report canvas. Those are
+  authored as PBIR JSON by scripts/build_report.py (see Current phase,
+  "Report pages"), or by hand in Desktop.
 - Every DAX measure that has a SQL equivalent must be validated against
   that SQL before it's used on a report page - run both, compare the
   numbers, and record the comparison (which SQL query, which DAX measure,
@@ -115,7 +116,8 @@ Scope - what this MCP is and isn't for in this project:
 /sql        staging, star schema, feature table, eval output tables
 /notebooks  01_eda, 02_methods, 03_reconciliation, 04_supervised, 05_evaluation
 /data       generation scripts, ground truth
-/powerbi    .pbix and DAX notes
+/powerbi    .pbip project (PBIR report + TMDL model), legacy .pbix, DAX notes
+/scripts    validate_dax.py (DAX vs SQL), build_report.py (PBIR pages)
 /docs       findings write-up
 
 ## Data shape targets
@@ -153,8 +155,8 @@ Scope - what this MCP is and isn't for in this project:
 
 ## Current phase
 Phases 2-5 done, evaluation outputs published to Postgres (Phase 5b),
-Phase 6 (Power BI) in progress - semantic model and core measures built
-and validated against SQL, see the end of this section.
+Phase 6 (Power BI) done - semantic model, 24 measures validated against
+SQL, five report pages generated as PBIR. See the end of this section.
 
 Phase 2 done - feature table built in sql/02_features.sql (journal_entry_
 features, one row per journal_header, 113,981 rows, no ground_truth join).
@@ -565,7 +567,46 @@ powerbi/dax_notes.md records the model decisions, the rules every measure
 follows, and a measure -> validating-SQL -> result table for all 24
 measures, plus the re-validation procedure and report-page usage notes.
 
-Still open in Phase 6: report pages (manual in Desktop).
+**Report pages - generated as PBIR, not drawn by hand.** The MCP cannot
+reach the report canvas, so the report was converted to a Power BI Project:
+powerbi/anomaly_detection.pbip (source of truth) with
+anomaly_detection.Report/ (PBIR JSON: one folder per page, one visual.json
+per visual) and anomaly_detection.SemanticModel/ (TMDL - the model built
+through the MCP, now diffable text). scripts/build_report.py generates all
+five pages (33 visuals) - Overview, Layered detection, Method comparison,
+Operating point, Review workload - from one readable Python file; every
+visual uses the validated measures, and each page filters to a single
+method or family so no measure ever sees more than one method. Output is
+checked against Microsoft's published PBIR JSON schemas (github
+microsoft/json-schemas; 54 files, 0 failing). Rules for editing:
+- Run build_report.py with Desktop CLOSED - Desktop holds the files and
+  overwrites them on save. Then open the .pbip (not the .pbix).
+- The theme ("Tidal", chosen in Desktop) and report.json are NOT managed
+  by the script; it leaves them alone. Meaningful series colours (errors
+  found blue #2a78d6, false alarms orange #eb6834 - validated categorical
+  palette) are set per visual so they survive any theme.
+- Desktop-authored mobile layouts (visuals/<name>/mobile.json) are kept
+  across a regenerate by visual name - so append new visuals at the END of
+  a page's list, or existing visuals get renumbered and lose their mobile
+  layout.
+- Desktop rewrites visual.json on save (schema 2.4.0 -> 2.12.0, adds
+  active:true, drops isDefaultSort) - cosmetic, the script's output is
+  equivalent.
+- Table totals are OFF on purpose: at the total row every method is in
+  context and the measures blank (summing across methods is invalid), so an
+  empty total would look like a broken measure and a computed one would be
+  wrong.
+- eval_method[method_name] has sortByColumn: sort_order (TMDL edit), so
+  methods and layers always list in pipeline order L1 -> L4.
+- Review workload page names individual employees; a note on the page says
+  a production deployment would use role-based access or pseudonymised
+  poster IDs.
+The old anomaly_detection.pbix is kept as a legacy snapshot and does NOT
+contain the report pages. .gitignore excludes **/.pbi/localSettings.json
+(a DPAPI-encrypted, machine-bound security binding) and **/.pbi/cache.abf.
+
+Phase 6 is complete apart from polish: layout tweaks go through
+build_report.py, measure changes through the MCP + validate_dax.py.
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
@@ -593,8 +634,8 @@ Still open in Phase 6: report pages (manual in Desktop).
   (see that section above) - relationships, measure definitions, and
   validating each measure against its SQL equivalent from Phase 5's
   notebook before it's trusted; report page layout, visuals, slicers, and
-  formatting are manual in Desktop, since the MCP has no reach into the
-  report canvas.
+  formatting are outside the MCP's reach, so they are generated as PBIR
+  (Power BI Project) JSON by scripts/build_report.py instead.
 
 ## Schema (as built, sql/01_schema.sql)
 

@@ -1,0 +1,167 @@
+table eval_threshold_sweep
+	lineageTag: 66675ea4-9aac-43da-9595-2bf391832f3b
+
+	measure 'Chosen Threshold' = CALCULATE ( MAX ( eval_threshold_sweep[threshold] ), eval_threshold_sweep[is_chosen] = TRUE () )
+		formatString: 0.00
+		displayFolder: Operating point
+		lineageTag: 2e87fbd0-710d-4e25-9000-c4f17b1c68d4
+
+	measure 'Chosen Recall' = CALCULATE ( MAX ( eval_threshold_sweep[recall] ), eval_threshold_sweep[is_chosen] = TRUE () )
+		formatString: 0.000
+		displayFolder: Operating point
+		lineageTag: b9be9d80-b517-422c-9fcd-5641b382cf2c
+
+	measure 'Chosen Precision' = CALCULATE ( MAX ( eval_threshold_sweep[precision] ), eval_threshold_sweep[is_chosen] = TRUE () )
+		formatString: 0.000
+		displayFolder: Operating point
+		lineageTag: 85cad433-595d-4eb9-9b58-770aa220423b
+
+	measure 'Chosen Analyst Hours per Month' = CALCULATE ( MAX ( eval_threshold_sweep[analyst_hours_per_month] ), eval_threshold_sweep[is_chosen] = TRUE () )
+		formatString: 0.0
+		displayFolder: Operating point
+		lineageTag: 2fb8b723-1094-428f-a75f-a929f738f6fd
+
+	column threshold
+		dataType: double
+		lineageTag: 8243b1e2-d27d-42c8-aa3f-dcee0c761a3f
+		summarizeBy: none
+		sourceColumn: threshold
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column model_name
+		dataType: string
+		lineageTag: 5ef06a89-3b0d-47c2-9564-436f8cc8e5dd
+		summarizeBy: none
+		sourceColumn: model_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column flagged
+		dataType: int64
+		formatString: 0
+		lineageTag: 3fcc0a36-d911-4d22-a7b0-3e337ad48712
+		summarizeBy: none
+		sourceColumn: flagged
+
+		annotation SummarizationSetBy = Automatic
+
+	column true_positives
+		dataType: int64
+		formatString: 0
+		lineageTag: 25788c6a-f2cd-4f7c-aee7-b95d89be1d0a
+		summarizeBy: none
+		sourceColumn: true_positives
+
+		annotation SummarizationSetBy = Automatic
+
+	column false_positives
+		dataType: int64
+		formatString: 0
+		lineageTag: 15de9989-cdae-4749-bda4-b6f9c3590de0
+		summarizeBy: none
+		sourceColumn: false_positives
+
+		annotation SummarizationSetBy = Automatic
+
+	column false_negatives
+		dataType: int64
+		formatString: 0
+		lineageTag: 599986f6-2266-4e19-a302-1faf91231e07
+		summarizeBy: none
+		sourceColumn: false_negatives
+
+		annotation SummarizationSetBy = Automatic
+
+	column precision
+		dataType: double
+		lineageTag: c95aba9c-6b76-4520-9b97-8ddcf397c1e2
+		summarizeBy: none
+		sourceColumn: precision
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column recall
+		dataType: double
+		lineageTag: 8a1260dd-a7df-4749-864d-941c53c2d21d
+		summarizeBy: none
+		sourceColumn: recall
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column f1
+		dataType: double
+		lineageTag: 977c0cd1-18d5-4272-b6b8-2e422789fd23
+		summarizeBy: none
+		sourceColumn: f1
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column flag_rate
+		dataType: double
+		lineageTag: c4f2ace6-8ae8-4fb1-aa28-0e2016ccdbc9
+		summarizeBy: none
+		sourceColumn: flag_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column analyst_hours_per_month
+		dataType: double
+		lineageTag: 0547ca44-b505-4e42-a6d4-fcd5eeac893d
+		summarizeBy: none
+		sourceColumn: analyst_hours_per_month
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column expected_cost_minutes
+		dataType: double
+		lineageTag: c161926f-1070-4c64-8c0b-ecbd058d1d3f
+		summarizeBy: none
+		sourceColumn: expected_cost_minutes
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column cost_fn_fp_ratio
+		dataType: double
+		lineageTag: 8a6b34b6-4366-427d-a1ba-002276ccacff
+		summarizeBy: none
+		sourceColumn: cost_fn_fp_ratio
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column is_chosen
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 4680bea1-d338-4c02-ad91-420647229105
+		summarizeBy: none
+		sourceColumn: is_chosen
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public eval_threshold_sweep' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_eval_threshold_sweep = Source{[Schema="public",Item="eval_threshold_sweep"]}[Data]
+				in
+				    public_eval_threshold_sweep
+
+	annotation PBI_ResultType = Table
+

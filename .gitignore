@@ -3,3 +3,9 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Power BI Project (.pbip): machine-local files. localSettings.json holds a
+# DPAPI-encrypted security-binding signature tied to this Windows user;
+# cache.abf is the local data cache. Neither belongs in git.
+**/.pbi/localSettings.json
+**/.pbi/cache.abf

@@ -1,0 +1,219 @@
+table eval_entry_flag
+	lineageTag: d88a75e5-0023-44ae-918c-2f81ed14752e
+
+	/// Number of distinct methods in the current filter context. Every scoring measure returns BLANK unless this is exactly 1 - counts and scores are within-method only (CLAUDE.md: never aggregate across methods).
+	measure 'Methods In Context' = DISTINCTCOUNT ( eval_entry_flag[method_name] )
+		formatString: 0
+		isHidden
+		displayFolder: _guards
+		lineageTag: 16039bc0-3156-4ba9-a8d9-55dbb7ad334f
+
+	/// Headers the selected method flagged.
+	measure Flags =
+			IF (
+			    [Methods In Context] = 1,
+			    COALESCE ( CALCULATE ( COUNTROWS ( eval_entry_flag ), eval_entry_flag[is_flagged] = TRUE () ), 0 )
+			)
+		formatString: #,0
+		displayFolder: Header-level
+		lineageTag: 3caed921-bc6b-4b6d-a922-222b4ef2b2df
+
+	measure 'True Positives' =
+			IF (
+			    [Methods In Context] = 1,
+			    COALESCE ( CALCULATE ( COUNTROWS ( eval_entry_flag ), eval_entry_flag[outcome] = "TP" ), 0 )
+			)
+		formatString: #,0
+		displayFolder: Header-level
+		lineageTag: c2716d0d-2d4e-41f7-887e-274733335ee3
+
+	measure 'False Positives' =
+			IF (
+			    [Methods In Context] = 1,
+			    COALESCE ( CALCULATE ( COUNTROWS ( eval_entry_flag ), eval_entry_flag[outcome] = "FP" ), 0 )
+			)
+		formatString: #,0
+		displayFolder: Header-level
+		lineageTag: c4cd962e-651e-42ed-82ad-1fb2c5203e82
+
+	measure 'False Negatives' =
+			IF (
+			    [Methods In Context] = 1,
+			    COALESCE ( CALCULATE ( COUNTROWS ( eval_entry_flag ), eval_entry_flag[outcome] = "FN" ), 0 )
+			)
+		formatString: #,0
+		displayFolder: Header-level
+		lineageTag: bbae5ca7-6bf2-4d3e-8f58-e9cf9e751cdc
+
+	/// Header-level precision. Only meaningful unfiltered by error_type: a false positive has no error_type, so per-type precision has no honest denominator (use Precision vs Slice instead).
+	measure Precision = DIVIDE ( [True Positives], [True Positives] + [False Positives] )
+		formatString: 0.000
+		displayFolder: Header-level
+		lineageTag: 80711754-a140-41a6-8d47-432452123b73
+
+	/// Header-level recall over is_error headers. For per-type / per-tier recall use Pair Recall.
+	measure Recall = DIVIDE ( [True Positives], [True Positives] + [False Negatives] )
+		formatString: 0.000
+		displayFolder: Header-level
+		lineageTag: c354b3eb-805a-4585-8b14-a848da121a49
+
+	measure F1 = DIVIDE ( 2 * [Precision] * [Recall], [Precision] + [Recall] )
+		formatString: 0.000
+		displayFolder: Header-level
+		lineageTag: 5a9081e3-01a1-413c-a453-92e943d98284
+
+	measure 'Flag Rate' = IF ( [Methods In Context] = 1, DIVIDE ( [Flags], COUNTROWS ( eval_entry_flag ) ) )
+		formatString: 0.0%
+		displayFolder: Header-level
+		lineageTag: c838ad00-a7f0-4ea9-9553-6d13c636c175
+
+	/// False positives x 5 analyst-minutes, over the 6-month test period. Same formula as eval_method_score.analyst_hours_per_month.
+	measure 'Analyst Hours per Month' = DIVIDE ( [False Positives] * 5, 60 * 6 )
+		formatString: 0.0
+		displayFolder: Header-level
+		lineageTag: 035f26ea-58e7-4b64-964c-75e7b5052341
+
+	/// Headers this layer flagged that no EARLIER layer (lower eval_method[sort_order]: L1 balance -> L2 duplicate -> L3 reconciliation -> L4 XGBoost @ 0.57) already flagged. Running order = cheap deterministic SQL first, model last. Summed over the four layers this equals the Final layered system's Flags exactly. Blank unless a single 'layer' method is selected on eval_method.
+	measure 'First-Catch Flags' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			-- headers this layer flagged, in the current filter context
+			VAR ThisLayer =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[is_flagged] = TRUE () )
+			-- headers any earlier layer flagged: drop the method filter, keep entry/date/employee filters
+			VAR EarlierLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] < CurrentOrder
+			    )
+			RETURN
+			    IF ( [Methods In Context] = 1 && IsLayer, COUNTROWS ( EXCEPT ( ThisLayer, EarlierLayers ) ) + 0 )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: 2de39466-6d3c-40a5-aea3-3a91b34e0ff8
+
+	/// True-positive headers first caught by this layer (see First-Catch Flags). Sums over the four layers to the Final layered system's True Positives.
+	measure 'First-Catch True Positives' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			VAR ThisLayerTP =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[outcome] = "TP" )
+			VAR EarlierLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] < CurrentOrder
+			    )
+			RETURN
+			    IF ( [Methods In Context] = 1 && IsLayer, COUNTROWS ( EXCEPT ( ThisLayerTP, EarlierLayers ) ) + 0 )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: e348deb5-e361-4004-b140-a46e19e5e098
+
+	/// Headers flagged by this layer and by NO other layer of the final stack - what the Final layered system would lose if this layer were removed. Order-independent; does not sum to the Final total (headers caught by 2+ layers are in no layer's unique count).
+	measure 'Unique Flags' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			VAR ThisLayer =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[is_flagged] = TRUE () )
+			VAR OtherLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] <> CurrentOrder
+			    )
+			RETURN
+			    IF ( [Methods In Context] = 1 && IsLayer, COUNTROWS ( EXCEPT ( ThisLayer, OtherLayers ) ) + 0 )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: b5749691-1edc-4a61-8d9c-c350e9173692
+
+	/// True-positive headers caught by this layer and no other - the recall the Final layered system would lose without it.
+	measure 'Unique True Positives' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			VAR ThisLayerTP =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[outcome] = "TP" )
+			VAR OtherLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] <> CurrentOrder
+			    )
+			RETURN
+			    IF ( [Methods In Context] = 1 && IsLayer, COUNTROWS ( EXCEPT ( ThisLayerTP, OtherLayers ) ) + 0 )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: dfbea847-4df6-4091-a216-05ad3e7f90f9
+
+	column header_id
+		dataType: int64
+		formatString: 0
+		lineageTag: fb9b9c74-11bc-42e4-8432-727c720ac368
+		summarizeBy: none
+		sourceColumn: header_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column method_name
+		dataType: string
+		lineageTag: b4fe5ddc-ac58-47d3-a1c7-bb5f01b078d4
+		summarizeBy: none
+		sourceColumn: method_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_flagged
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 77fb07f2-9146-4a0e-ba34-561afd669664
+		summarizeBy: none
+		sourceColumn: is_flagged
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_covered
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 5a467a8d-4ec8-4c17-a1ad-d8bb19fbed6c
+		summarizeBy: none
+		sourceColumn: is_covered
+
+		annotation SummarizationSetBy = Automatic
+
+	column score
+		dataType: double
+		lineageTag: e432d3a4-bc17-47d0-b497-dd07719f164c
+		summarizeBy: sum
+		sourceColumn: score
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column outcome
+		dataType: string
+		lineageTag: 17ad2df5-993e-4515-8142-2f3b8ebf4513
+		summarizeBy: none
+		sourceColumn: outcome
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public eval_entry_flag' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_eval_entry_flag = Source{[Schema="public",Item="eval_entry_flag"]}[Data]
+				in
+				    public_eval_entry_flag
+

@@ -1,0 +1,283 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "tbl015",
+  "position": {
+    "x": 24,
+    "y": 88,
+    "z": 1000,
+    "height": 232,
+    "width": 608,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_method"
+                    }
+                  },
+                  "Property": "method_name"
+                }
+              },
+              "queryRef": "eval_method.method_name",
+              "nativeQueryRef": "method_name",
+              "displayName": "Method"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_entry_flag"
+                    }
+                  },
+                  "Property": "Precision"
+                }
+              },
+              "queryRef": "eval_entry_flag.Precision",
+              "nativeQueryRef": "Precision",
+              "displayName": "Precision"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_entry_flag"
+                    }
+                  },
+                  "Property": "Recall"
+                }
+              },
+              "queryRef": "eval_entry_flag.Recall",
+              "nativeQueryRef": "Recall",
+              "displayName": "Recall"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_entry_flag"
+                    }
+                  },
+                  "Property": "F1"
+                }
+              },
+              "queryRef": "eval_entry_flag.F1",
+              "nativeQueryRef": "F1",
+              "displayName": "F1"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_entry_flag"
+                    }
+                  },
+                  "Property": "Flag Rate"
+                }
+              },
+              "queryRef": "eval_entry_flag.Flag Rate",
+              "nativeQueryRef": "Flag Rate",
+              "displayName": "Flag rate"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "eval_entry_flag"
+                    }
+                  },
+                  "Property": "Analyst Hours per Month"
+                }
+              },
+              "queryRef": "eval_entry_flag.Analyst Hours per Month",
+              "nativeQueryRef": "Analyst Hours per Month",
+              "displayName": "Analyst hrs / month"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "eval_method"
+                  }
+                },
+                "Property": "method_name"
+              }
+            },
+            "direction": "Ascending"
+          }
+        ],
+        "isDefaultSort": false
+      }
+    },
+    "objects": {
+      "total": [
+        {
+          "properties": {
+            "totals": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Scoreboard A - unsupervised (realistic)'"
+                }
+              }
+            },
+            "fontSize": {
+              "expr": {
+                "Literal": {
+                  "Value": "12D"
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0b0b0b'"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "subTitle": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'No labels used; best F1 0.27 (segmented IQR)'"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#52514e'"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "vfBoardA",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "eval_method"
+              }
+            },
+            "Property": "scoreboard"
+          }
+        },
+        "type": "Categorical",
+        "filter": {
+          "Version": 2,
+          "From": [
+            {
+              "Name": "t",
+              "Entity": "eval_method",
+              "Type": 0
+            }
+          ],
+          "Where": [
+            {
+              "Condition": {
+                "In": {
+                  "Expressions": [
+                    {
+                      "Column": {
+                        "Expression": {
+                          "SourceRef": {
+                            "Source": "t"
+                          }
+                        },
+                        "Property": "scoreboard"
+                      }
+                    }
+                  ],
+                  "Values": [
+                    [
+                      {
+                        "Literal": {
+                          "Value": "'A'"
+                        }
+                      }
+                    ]
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "howCreated": "User"
+      }
+    ]
+  }
+}

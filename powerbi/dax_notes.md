@@ -1,7 +1,10 @@
 # DAX notes: semantic model and measure validation
 
-The semantic model in `anomaly_detection.pbix` was built and tested through the
-Power BI MCP (`powerbi-modeling-mcp`). Every measure that has a SQL equivalent
+The semantic model in `anomaly_detection.pbip` (TMDL under
+`anomaly_detection.SemanticModel/`) was built and tested through the
+Power BI MCP (`powerbi-modeling-mcp`). The report pages are generated as PBIR
+by `scripts/build_report.py` (section 7). The older `anomaly_detection.pbix` is
+a legacy snapshot without the report pages. Every measure that has a SQL equivalent
 has been checked against that SQL. This file records **which SQL validates which
 measure**, what the result was, and the design decisions a reviewer is likely to
 ask about.
@@ -249,3 +252,47 @@ in section 3 **before** it goes on a report page.
 - **Keep the two scoreboards separate:** don't put Scoreboard A (unsupervised)
   and Scoreboard B (supervised) methods in one ranked visual. Use
   `eval_method[scoreboard]` to split them.
+
+---
+
+## 7. Report pages
+
+The MCP can't reach the report canvas, so the report is a **Power BI Project**
+(`anomaly_detection.pbip`). Each page and visual is a PBIR JSON file, and
+[`scripts/build_report.py`](../scripts/build_report.py) generates all of them.
+The output is checked against Microsoft's published PBIR JSON schemas.
+
+| Page | Question it answers | Filter scope | Measures used |
+|---|---|---|---|
+| Overview | How well does the final system work? | page: `Final layered system` | Recall, Precision, F1, Flags, Analyst Hours per Month; Pair Recall by `error_type` and by `detectability` |
+| Layered detection | Do the layers catch different things? | page: `method_family = layer` | First-Catch Flags / True Positives; Flags, Unique Flags / True Positives; First-Catch Pairs Caught (layer × error_type heatmap) |
+| Method comparison | Blind methods vs labelled models | visual: `scoreboard = A`, `scoreboard = B`; heatmap: families unsupervised + supervised | Precision, Recall, F1, Flag Rate, Analyst Hours per Month; Pair Recall (method × error_type heatmap) |
+| Operating point | Why a 0.57 threshold? | none (the sweep table is XGBoost-only) | Chosen Threshold / Recall / Precision / Analyst Hours; sweep columns `precision`, `recall`, `analyst_hours_per_month`, `expected_cost_minutes` |
+| Review workload | What would an analyst face? | page: `Final layered system` | Flags, True Positives, False Positives, Flag Rate, by `fiscal_period` and by poster |
+
+Design choices:
+
+- **Every visual sees exactly one method.** Each method table and matrix has
+  `eval_method[method_name]` on rows; the other visuals get a page or visual
+  filter. This follows rule 1 in section 2.
+- **Table totals are off.** At the total row every method is in context, so the
+  measures return blank. A computed total would add values across methods,
+  which is invalid.
+- **No dual axes.** Precision and recall share one 0–1 axis. Workload and
+  expected cost each have their own chart.
+- **Colours that carry meaning are set on each visual**, so a theme change
+  can't repaint them: errors found are blue `#2a78d6`, false alarms orange
+  `#eb6834`. The theme itself ("Tidal") is chosen in Desktop, and the script
+  leaves it alone.
+- **Privacy:** the Review workload page names individual posters. A note on
+  the page says a production deployment would use role-based access or
+  pseudonymised IDs.
+
+To regenerate the pages:
+
+1. Close Desktop, because it overwrites the files on save.
+2. From the repo root, run `.venv/Scripts/python.exe scripts/build_report.py`.
+3. Open `anomaly_detection.pbip`.
+
+Mobile layouts made in Desktop are kept across a regenerate, matched by visual
+name, so add new visuals at the end of a page's list.

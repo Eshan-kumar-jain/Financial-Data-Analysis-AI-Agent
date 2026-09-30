@@ -1,0 +1,49 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "txt018",
+  "position": {
+    "x": 24,
+    "y": 12,
+    "z": 0,
+    "height": 64,
+    "width": 1232,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Operating point - why XGBoost @ 0.57",
+                    "textStyle": {
+                      "fontSize": "20pt",
+                      "fontWeight": "bold",
+                      "color": "#0b0b0b"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Cost model: 5 analyst-minutes per false positive vs 96 expected minutes per miss (480 x 20% escalation) = 19:1. The cost surface is shallow - treat 0.57 as a band (~0.50-0.60), not a constant.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "normal",
+                      "color": "#52514e"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

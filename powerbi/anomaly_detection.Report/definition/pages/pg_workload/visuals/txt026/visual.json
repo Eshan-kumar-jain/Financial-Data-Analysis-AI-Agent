@@ -1,0 +1,49 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "txt026",
+  "position": {
+    "x": 24,
+    "y": 12,
+    "z": 0,
+    "height": 64,
+    "width": 1232,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Review workload - what an analyst would face",
+                    "textStyle": {
+                      "fontSize": "20pt",
+                      "fontWeight": "bold",
+                      "color": "#0b0b0b"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Final layered system. Every flag is a review: true positives are seeded errors found, false positives are review time spent on clean entries.",
+                    "textStyle": {
+                      "fontSize": "10pt",
+                      "fontWeight": "normal",
+                      "color": "#52514e"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,73 @@
+table eval_method
+	lineageTag: 76ebad67-ea7d-4789-8d0e-b632b14e6fca
+
+	column method_name
+		dataType: string
+		lineageTag: 09a42773-3335-47c6-869e-413fa293a8aa
+		summarizeBy: none
+		sourceColumn: method_name
+		sortByColumn: sort_order
+
+		annotation SummarizationSetBy = Automatic
+
+	column method_family
+		dataType: string
+		lineageTag: 2715c965-592c-4e00-a6ec-026d92568b41
+		summarizeBy: none
+		sourceColumn: method_family
+
+		annotation SummarizationSetBy = Automatic
+
+	column scoreboard
+		dataType: string
+		lineageTag: 51af0097-148f-40ed-b904-274dd115f565
+		summarizeBy: none
+		sourceColumn: scoreboard
+
+		annotation SummarizationSetBy = Automatic
+
+	column threshold
+		dataType: double
+		lineageTag: 395974ae-adfa-4680-be81-3fabd891692f
+		summarizeBy: none
+		sourceColumn: threshold
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column produces_score
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: cb66e99b-5cec-49ee-bb1b-1c4903576e40
+		summarizeBy: none
+		sourceColumn: produces_score
+
+		annotation SummarizationSetBy = Automatic
+
+	column sort_order
+		dataType: int64
+		formatString: 0
+		lineageTag: 28b47970-8293-488f-b8dd-18bed6b0e3c8
+		summarizeBy: sum
+		sourceColumn: sort_order
+
+		annotation SummarizationSetBy = Automatic
+
+	column method_note
+		dataType: string
+		lineageTag: 5d70c8bd-f915-4eb3-ad20-f9ce1de97cc3
+		summarizeBy: none
+		sourceColumn: method_note
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public eval_method' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_eval_method = Source{[Schema="public",Item="eval_method"]}[Data]
+				in
+				    public_eval_method
+

@@ -1,0 +1,24 @@
+relationship AutoDetected_baf72aa7-10e2-4790-8028-707ee0c85bd2
+	fromColumn: eval_entry.date_key
+	toColumn: dim_date.date_key
+
+relationship AutoDetected_86672adb-69b5-43f5-914a-4cbc567b156c
+	fromColumn: eval_entry.employee_key
+	toColumn: dim_employee.employee_key
+
+relationship AutoDetected_ba184925-91b9-4a0c-9462-8de1d7dd5283
+	fromColumn: eval_entry_flag.header_id
+	toColumn: eval_entry.header_id
+
+relationship AutoDetected_da19f2cf-5472-406d-970f-6900b482290b
+	fromColumn: eval_entry_label.header_id
+	toColumn: eval_entry.header_id
+
+relationship AutoDetected_9beff0a2-d78a-4d95-b5c2-2e0f97f94df4
+	fromColumn: eval_entry_flag.method_name
+	toColumn: eval_method.method_name
+
+relationship AutoDetected_dc506827-ec08-4e59-ba94-2f1ec447ab60
+	fromColumn: eval_method_score.method_name
+	toColumn: eval_method.method_name
+

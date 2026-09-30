@@ -1,0 +1,125 @@
+table eval_entry_label
+	lineageTag: 5b130660-72c7-4f20-b9f7-fb17680a4889
+
+	/// (header, error_type) pairs in context - the pair-level recall denominator.
+	measure 'Label Pairs' = COUNTROWS ( eval_entry_label )
+		formatString: #,0
+		displayFolder: Pair-level
+		lineageTag: f13c2202-2889-4d7e-9747-848d4cc6e68e
+
+	/// Label pairs whose header the selected method flagged. TREATAS pushes the method's flagged header_ids onto eval_entry_label, so an error_type/detectability filter on the label table and a method filter on the flag table combine without a bidirectional relationship. Counts pairs, not headers: a doubly-labelled header counts once per type.
+	measure 'Pairs Caught' =
+			VAR FlaggedHeaders =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE ()
+			    )
+			RETURN
+			    IF (
+			        [Methods In Context] = 1,
+			        COALESCE (
+			            CALCULATE (
+			                COUNTROWS ( eval_entry_label ),
+			                TREATAS ( FlaggedHeaders, eval_entry_label[header_id] )
+			            ),
+			            0
+			        )
+			    )
+		formatString: #,0
+		displayFolder: Pair-level
+		lineageTag: 39e461fb-feb7-4365-b2db-c827fd500b2a
+
+	/// Pair-level recall - the per-type / per-tier recall Section 9 of 05_evaluation.ipynb requires. Reference SQL: recall_check_rs.
+	measure 'Pair Recall' = DIVIDE ( [Pairs Caught], [Label Pairs] )
+		formatString: 0.000
+		displayFolder: Pair-level
+		lineageTag: 1625ae2a-9349-495b-8690-59ca15794383
+
+	/// Pairs of the sliced type caught over the method's TOTAL flags. Defined per type (unlike Precision); flattering only to targeted layers, by design. Matches eval_method_score.precision_vs_slice.
+	measure 'Precision vs Slice' = DIVIDE ( [Pairs Caught], [Flags] )
+		formatString: 0.000
+		displayFolder: Pair-level
+		lineageTag: f37f7caa-4625-4632-9e38-8124efb2a686
+
+	/// Label pairs whose header this layer caught first (see First-Catch Flags), pushed onto eval_entry_label with TREATAS so it slices by error_type / detectability. Sums over the four layers to the Final layered system's Pairs Caught per type.
+	measure 'First-Catch Pairs Caught' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			VAR ThisLayer =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[is_flagged] = TRUE () )
+			VAR EarlierLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] < CurrentOrder
+			    )
+			VAR FirstCaught = EXCEPT ( ThisLayer, EarlierLayers )
+			RETURN
+			    IF (
+			        [Methods In Context] = 1 && IsLayer,
+			        CALCULATE ( COUNTROWS ( eval_entry_label ), TREATAS ( FirstCaught, eval_entry_label[header_id] ) ) + 0
+			    )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: cfe6e44d-ebe7-489e-8105-76fc688bad18
+
+	/// Label pairs whose header only this layer caught (see Unique Flags), via TREATAS so it slices by error_type / detectability.
+	measure 'Unique Pairs Caught' =
+			VAR CurrentOrder = SELECTEDVALUE ( eval_method[sort_order] )
+			VAR IsLayer = SELECTEDVALUE ( eval_method[method_family] ) = "layer"
+			VAR ThisLayer =
+			    CALCULATETABLE ( VALUES ( eval_entry_flag[header_id] ), eval_entry_flag[is_flagged] = TRUE () )
+			VAR OtherLayers =
+			    CALCULATETABLE (
+			        VALUES ( eval_entry_flag[header_id] ),
+			        eval_entry_flag[is_flagged] = TRUE (),
+			        REMOVEFILTERS ( eval_method ),
+			        eval_method[method_family] = "layer",
+			        eval_method[sort_order] <> CurrentOrder
+			    )
+			VAR OnlyThis = EXCEPT ( ThisLayer, OtherLayers )
+			RETURN
+			    IF (
+			        [Methods In Context] = 1 && IsLayer,
+			        CALCULATE ( COUNTROWS ( eval_entry_label ), TREATAS ( OnlyThis, eval_entry_label[header_id] ) ) + 0
+			    )
+		formatString: #,0
+		displayFolder: Layer attribution
+		lineageTag: 4fc03962-cb54-48f9-a1b0-2cf1940f13ee
+
+	column header_id
+		dataType: int64
+		formatString: 0
+		lineageTag: 508e3df9-0e0e-442f-9aef-5b73264feca5
+		summarizeBy: none
+		sourceColumn: header_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column error_type
+		dataType: string
+		lineageTag: 0566bf51-e681-4bf4-ac4e-bc9d99e0de7d
+		summarizeBy: none
+		sourceColumn: error_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column detectability
+		dataType: string
+		lineageTag: c1c491f3-1c7c-4d4c-942e-0cf4c9de5465
+		summarizeBy: none
+		sourceColumn: detectability
+
+		annotation SummarizationSetBy = Automatic
+
+	partition 'public eval_entry_label' = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost:5432", "fin_anomaly"),
+				    public_eval_entry_label = Source{[Schema="public",Item="eval_entry_label"]}[Data]
+				in
+				    public_eval_entry_label
+
