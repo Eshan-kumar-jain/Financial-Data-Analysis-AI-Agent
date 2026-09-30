@@ -45,8 +45,13 @@ def style_fig(fig, height=None):
     """The one place chart styling lives: layout, legend, and the tooltip."""
     if height is not None:
         fig.update_layout(height=height)
-    fig.update_layout(margin=dict(l=8, r=8, t=40, b=8),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+    # A chart with a legend gets a taller top margin: the title sits at the
+    # top of the margin and the legend row just above the plot, below it. With
+    # the old fixed t=40 the two shared the same strip and overlapped.
+    has_legend = sum(1 for t in fig.data if t.showlegend is not False) > 1
+    fig.update_layout(margin=dict(l=8, r=8, t=76 if has_legend else 40, b=8),
+                      title=dict(y=1, yref="container", yanchor="top", pad=dict(t=8)),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0),
                       hoverlabel=TOOLTIP)
     fig.update_xaxes(showgrid=False)
     return fig

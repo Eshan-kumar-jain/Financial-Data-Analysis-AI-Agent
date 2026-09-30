@@ -26,8 +26,11 @@ def band(fig):
     """Shade the operating band and mark the chosen threshold."""
     fig.add_vrect(x0=lo, x1=hi, fillcolor=BLUE, opacity=0.08, line_width=0,
                   annotation_text=f"band {lo:.2f}-{hi:.2f}", annotation_position="top left")
+    # The threshold label goes at the BOTTOM of its line: at the top it shared
+    # a row with the band label and ran into it on the narrow charts
+    # ("band 0.45-0.6057").
     fig.add_vline(x=op["threshold"], line_dash="dash", line_color="#52514e", line_width=1,
-                  annotation_text=f"{op['threshold']:.2f}", annotation_position="top right")
+                  annotation_text=f"{op['threshold']:.2f}", annotation_position="bottom right")
     fig.update_xaxes(title="Threshold", range=[0, 1])
     return fig
 
