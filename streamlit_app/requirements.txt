@@ -1,0 +1,7 @@
+# Streamlit Community Cloud installs this file (it sits next to the entrypoint,
+# streamlit_app/app.py). Pinned to the versions validated locally on Python 3.14.
+streamlit==1.64.0
+plotly==7.1.0
+pandas==3.0.5
+numpy==2.5.2
+pyarrow==25.0.1

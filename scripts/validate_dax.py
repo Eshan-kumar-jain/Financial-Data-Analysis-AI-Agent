@@ -217,114 +217,119 @@ WHERE m.method_family = 'layer'
 GROUP BY m.method_name, l.error_type
 """
 
-with engine.connect() as c:
-    layer_hdr = {r.method_name: r for r in c.execute(text(SQL_LAYER_HEADER))}
-    layer_pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_LAYER_PAIRS))}
-    hdr = {r.method_name: r for r in c.execute(text(SQL_HEADER))}
-    pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_PAIRS))}
-    tier = {r.detectability: r for r in c.execute(text(SQL_TIER))}
-    op = c.execute(text(SQL_OP)).one()
-    stored = {(r.method_name, r.slice_type, r.slice_value): r for r in c.execute(text(SQL_STORED))}
+def main():
+    with engine.connect() as c:
+        layer_hdr = {r.method_name: r for r in c.execute(text(SQL_LAYER_HEADER))}
+        layer_pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_LAYER_PAIRS))}
+        hdr = {r.method_name: r for r in c.execute(text(SQL_HEADER))}
+        pairs = {(r.method_name, r.error_type): r for r in c.execute(text(SQL_PAIRS))}
+        tier = {r.detectability: r for r in c.execute(text(SQL_TIER))}
+        op = c.execute(text(SQL_OP)).one()
+        stored = {(r.method_name, r.slice_type, r.slice_value): r for r in c.execute(text(SQL_STORED))}
 
-mismatches = []
-close = lambda a, b, tol=1e-9: a is not None and b is not None and abs(float(a) - float(b)) <= tol
+    mismatches = []
+    close = lambda a, b, tol=1e-9: a is not None and b is not None and abs(float(a) - float(b)) <= tol
 
-print("=== 1. Header-level: DAX vs SQL recompute vs stored eval_method_score ===")
-print(f"{'method':36} {'flags':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'prec':>6} {'rec':>6} {'hrs/mo':>6}  counts  vs-stored")
-for m, (fl, tp, fp, fn) in DAX_HEADER.items():
-    s = hdr[m]
-    counts_ok = (fl, tp, fp, fn) == (s.flags, s.tp, s.fp, s.fn)
-    prec = tp / (tp + fp) if tp + fp else 0.0
-    rec = tp / (tp + fn)
-    hrs = fp * 5 / 60 / 6
-    st = stored[(m, "overall", "all")]
-    stored_ok = (round(prec, 3) == round(float(st.precision), 3)
-                 and round(rec, 3) == round(float(st.recall), 3)
-                 and (st.analyst_hours_per_month is None or round(hrs, 2) == round(float(st.analyst_hours_per_month), 2)))
-    if not counts_ok:
-        mismatches.append(("header", m, (fl, tp, fp, fn), (s.flags, s.tp, s.fp, s.fn)))
-    if not stored_ok:
-        mismatches.append(("header-stored", m, (prec, rec, hrs), (st.precision, st.recall, st.analyst_hours_per_month)))
-    print(f"{m:36} {fl:>6} {tp:>5} {fp:>5} {fn:>5} {prec:6.3f} {rec:6.3f} {hrs:6.1f}  {'MATCH' if counts_ok else 'MISMATCH':6}  {'MATCH' if stored_ok else 'MISMATCH'}")
-    assert s.n == 28695, m
+    print("=== 1. Header-level: DAX vs SQL recompute vs stored eval_method_score ===")
+    print(f"{'method':36} {'flags':>6} {'TP':>5} {'FP':>5} {'FN':>5} {'prec':>6} {'rec':>6} {'hrs/mo':>6}  counts  vs-stored")
+    for m, (fl, tp, fp, fn) in DAX_HEADER.items():
+        s = hdr[m]
+        counts_ok = (fl, tp, fp, fn) == (s.flags, s.tp, s.fp, s.fn)
+        prec = tp / (tp + fp) if tp + fp else 0.0
+        rec = tp / (tp + fn)
+        hrs = fp * 5 / 60 / 6
+        st = stored[(m, "overall", "all")]
+        stored_ok = (round(prec, 3) == round(float(st.precision), 3)
+                     and round(rec, 3) == round(float(st.recall), 3)
+                     and (st.analyst_hours_per_month is None or round(hrs, 2) == round(float(st.analyst_hours_per_month), 2)))
+        if not counts_ok:
+            mismatches.append(("header", m, (fl, tp, fp, fn), (s.flags, s.tp, s.fp, s.fn)))
+        if not stored_ok:
+            mismatches.append(("header-stored", m, (prec, rec, hrs), (st.precision, st.recall, st.analyst_hours_per_month)))
+        print(f"{m:36} {fl:>6} {tp:>5} {fp:>5} {fn:>5} {prec:6.3f} {rec:6.3f} {hrs:6.1f}  {'MATCH' if counts_ok else 'MISMATCH':6}  {'MATCH' if stored_ok else 'MISMATCH'}")
+        assert s.n == 28695, m
 
-print("\n=== 2. Pair-level Pairs Caught / Pair Recall: 16 methods x 8 types ===")
-n_cells = n_ok = 0
-for m, caught_list in DAX_PAIRS.items():
-    for t, dax_caught, dax_n in zip(TYPES, caught_list, DAX_PAIRS_DENOM):
-        s = pairs[(m, t)]
-        st = stored[(m, "error_type", t)]
-        n_cells += 1
-        ok = (dax_caught == s.caught and dax_n == s.n_pairs
-              and round(dax_caught / dax_n, 3) == round(float(st.recall), 3)
-              and (st.precision_vs_slice is None or DAX_HEADER[m][0] == 0
-                   or round(dax_caught / DAX_HEADER[m][0], 3) == round(float(st.precision_vs_slice), 3)))
-        n_ok += ok
+    print("\n=== 2. Pair-level Pairs Caught / Pair Recall: 16 methods x 8 types ===")
+    n_cells = n_ok = 0
+    for m, caught_list in DAX_PAIRS.items():
+        for t, dax_caught, dax_n in zip(TYPES, caught_list, DAX_PAIRS_DENOM):
+            s = pairs[(m, t)]
+            st = stored[(m, "error_type", t)]
+            n_cells += 1
+            ok = (dax_caught == s.caught and dax_n == s.n_pairs
+                  and round(dax_caught / dax_n, 3) == round(float(st.recall), 3)
+                  and (st.precision_vs_slice is None or DAX_HEADER[m][0] == 0
+                       or round(dax_caught / DAX_HEADER[m][0], 3) == round(float(st.precision_vs_slice), 3)))
+            n_ok += ok
+            if not ok:
+                mismatches.append(("pair", m, t, (dax_caught, dax_n), (s.caught, s.n_pairs, st.recall, st.precision_vs_slice)))
+    print(f"{n_ok}/{n_cells} cells match (caught, n_pairs, recall vs stored, precision_vs_slice vs stored)")
+
+    print("\n=== 2b. Final layered system per type (recall_check_rs shape) ===")
+    fin = DAX_PAIRS["Final layered system"]
+    for t, dc, dn in zip(TYPES, fin, DAX_PAIRS_DENOM):
+        s = pairs[("Final layered system", t)]
+        print(f"{t:22} DAX {dc:>4}/{dn:<4} = {dc/dn:.3f}   SQL {s.caught:>4}/{s.n_pairs:<4} = {s.caught/s.n_pairs:.3f}   "
+              f"{'MATCH' if (dc, dn) == (s.caught, s.n_pairs) else 'MISMATCH'}")
+
+    print("\n=== 3. Final layered system per detectability tier ===")
+    for tr, (dn, dc) in DAX_TIER_FINAL.items():
+        s = tier[tr]
+        ok = (dn, dc) == (s.n_pairs, s.caught)
         if not ok:
-            mismatches.append(("pair", m, t, (dax_caught, dax_n), (s.caught, s.n_pairs, st.recall, st.precision_vs_slice)))
-print(f"{n_ok}/{n_cells} cells match (caught, n_pairs, recall vs stored, precision_vs_slice vs stored)")
+            mismatches.append(("tier", tr, (dn, dc), (s.n_pairs, s.caught)))
+        print(f"{tr:8} DAX {dc}/{dn} = {dc/dn:.3f}   SQL {s.caught}/{s.n_pairs} = {s.caught/s.n_pairs:.3f}   {'MATCH' if ok else 'MISMATCH'}")
 
-print("\n=== 2b. Final layered system per type (recall_check_rs shape) ===")
-fin = DAX_PAIRS["Final layered system"]
-for t, dc, dn in zip(TYPES, fin, DAX_PAIRS_DENOM):
-    s = pairs[("Final layered system", t)]
-    print(f"{t:22} DAX {dc:>4}/{dn:<4} = {dc/dn:.3f}   SQL {s.caught:>4}/{s.n_pairs:<4} = {s.caught/s.n_pairs:.3f}   "
-          f"{'MATCH' if (dc, dn) == (s.caught, s.n_pairs) else 'MISMATCH'}")
+    print("\n=== 4. Operating point (eval_threshold_sweep is_chosen) ===")
+    op_ok = all(close(a, b) for a, b in zip(DAX_OP, (op.threshold, op.recall, op.precision, op.analyst_hours_per_month)))
+    if not op_ok:
+        mismatches.append(("op", DAX_OP, tuple(op)))
+    print(f"DAX {DAX_OP}\nSQL {tuple(float(x) for x in op)}\n{'MATCH' if op_ok else 'MISMATCH'}")
+    # Cross-check: the sweep's chosen row must equal the L4 method's own flags.
+    l4 = hdr["L4 XGBoost @ 0.57"]
+    xok = close(l4.tp / (l4.tp + l4.fn), op.recall) and close(l4.tp / (l4.tp + l4.fp), op.precision)
+    print(f"sweep@0.57 vs L4 flag rows: {'MATCH' if xok else 'MISMATCH'}")
+    if not xok:
+        mismatches.append(("op-vs-L4",))
 
-print("\n=== 3. Final layered system per detectability tier ===")
-for tr, (dn, dc) in DAX_TIER_FINAL.items():
-    s = tier[tr]
-    ok = (dn, dc) == (s.n_pairs, s.caught)
-    if not ok:
-        mismatches.append(("tier", tr, (dn, dc), (s.n_pairs, s.caught)))
-    print(f"{tr:8} DAX {dc}/{dn} = {dc/dn:.3f}   SQL {s.caught}/{s.n_pairs} = {s.caught/s.n_pairs:.3f}   {'MATCH' if ok else 'MISMATCH'}")
+    print("\n=== 5. Layer attribution: first-catch and unique, DAX vs SQL ===")
+    print(f"{'layer':36} {'fc_flags':>8} {'fc_tp':>6} {'u_flags':>8} {'u_tp':>6}  result")
+    for m, dax in DAX_LAYER.items():
+        s = layer_hdr[m]
+        sql = (s.fc_flags, s.fc_tp, s.u_flags, s.u_tp)
+        ok = dax == sql
+        if not ok:
+            mismatches.append(("layer", m, dax, sql))
+        print(f"{m:36} {dax[0]:>8} {dax[1]:>6} {dax[2]:>8} {dax[3]:>6}  {'MATCH' if ok else f'MISMATCH sql={sql}'}")
 
-print("\n=== 4. Operating point (eval_threshold_sweep is_chosen) ===")
-op_ok = all(close(a, b) for a, b in zip(DAX_OP, (op.threshold, op.recall, op.precision, op.analyst_hours_per_month)))
-if not op_ok:
-    mismatches.append(("op", DAX_OP, tuple(op)))
-print(f"DAX {DAX_OP}\nSQL {tuple(float(x) for x in op)}\n{'MATCH' if op_ok else 'MISMATCH'}")
-# Cross-check: the sweep's chosen row must equal the L4 method's own flags.
-l4 = hdr["L4 XGBoost @ 0.57"]
-xok = close(l4.tp / (l4.tp + l4.fn), op.recall) and close(l4.tp / (l4.tp + l4.fp), op.precision)
-print(f"sweep@0.57 vs L4 flag rows: {'MATCH' if xok else 'MISMATCH'}")
-if not xok:
-    mismatches.append(("op-vs-L4",))
+    n_cells = n_ok = 0
+    for m, (fc_list, u_list) in DAX_LAYER_PAIRS.items():
+        for t, dfc, du in zip(TYPES, fc_list, u_list):
+            s = layer_pairs.get((m, t))
+            sql = (s.fc_pairs, s.u_pairs) if s else (0, 0)
+            n_cells += 1
+            n_ok += (dfc, du) == sql
+            if (dfc, du) != sql:
+                mismatches.append(("layer-pair", m, t, (dfc, du), sql))
+    print(f"layer x error_type: {n_ok}/{n_cells} cells match (first-catch and unique pairs)")
 
-print("\n=== 5. Layer attribution: first-catch and unique, DAX vs SQL ===")
-print(f"{'layer':36} {'fc_flags':>8} {'fc_tp':>6} {'u_flags':>8} {'u_tp':>6}  result")
-for m, dax in DAX_LAYER.items():
-    s = layer_hdr[m]
-    sql = (s.fc_flags, s.fc_tp, s.u_flags, s.u_tp)
-    ok = dax == sql
-    if not ok:
-        mismatches.append(("layer", m, dax, sql))
-    print(f"{m:36} {dax[0]:>8} {dax[1]:>6} {dax[2]:>8} {dax[3]:>6}  {'MATCH' if ok else f'MISMATCH sql={sql}'}")
+    # First-catch is a partition of the final stack's flags, so it must add up
+    # to the Final layered system exactly - header-level and per type.
+    fin_hdr = hdr["Final layered system"]
+    sum_ok = (sum(v[0] for v in DAX_LAYER.values()) == fin_hdr.flags
+              and sum(v[1] for v in DAX_LAYER.values()) == fin_hdr.tp)
+    for i, t in enumerate(TYPES):
+        sum_ok &= sum(v[0][i] for v in DAX_LAYER_PAIRS.values()) == pairs[("Final layered system", t)].caught
+    if not sum_ok:
+        mismatches.append(("first-catch-sum",))
+    print(f"first-catch sums to Final layered system (flags {fin_hdr.flags}, TP {fin_hdr.tp}, "
+          f"per-type caught): {'MATCH' if sum_ok else 'MISMATCH'}")
 
-n_cells = n_ok = 0
-for m, (fc_list, u_list) in DAX_LAYER_PAIRS.items():
-    for t, dfc, du in zip(TYPES, fc_list, u_list):
-        s = layer_pairs.get((m, t))
-        sql = (s.fc_pairs, s.u_pairs) if s else (0, 0)
-        n_cells += 1
-        n_ok += (dfc, du) == sql
-        if (dfc, du) != sql:
-            mismatches.append(("layer-pair", m, t, (dfc, du), sql))
-print(f"layer x error_type: {n_ok}/{n_cells} cells match (first-catch and unique pairs)")
+    print(f"\nTOTAL MISMATCHES: {len(mismatches)}")
+    for x in mismatches:
+        print("  ", x)
+    sys.exit(1 if mismatches else 0)
 
-# First-catch is a partition of the final stack's flags, so it must add up
-# to the Final layered system exactly - header-level and per type.
-fin_hdr = hdr["Final layered system"]
-sum_ok = (sum(v[0] for v in DAX_LAYER.values()) == fin_hdr.flags
-          and sum(v[1] for v in DAX_LAYER.values()) == fin_hdr.tp)
-for i, t in enumerate(TYPES):
-    sum_ok &= sum(v[0][i] for v in DAX_LAYER_PAIRS.values()) == pairs[("Final layered system", t)].caught
-if not sum_ok:
-    mismatches.append(("first-catch-sum",))
-print(f"first-catch sums to Final layered system (flags {fin_hdr.flags}, TP {fin_hdr.tp}, "
-      f"per-type caught): {'MATCH' if sum_ok else 'MISMATCH'}")
 
-print(f"\nTOTAL MISMATCHES: {len(mismatches)}")
-for x in mismatches:
-    print("  ", x)
-sys.exit(1 if mismatches else 0)
+if __name__ == "__main__":
+    main()

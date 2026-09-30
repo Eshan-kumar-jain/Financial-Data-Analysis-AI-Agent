@@ -117,7 +117,9 @@ Scope - what this MCP is and isn't for in this project:
 /notebooks  01_eda, 02_methods, 03_reconciliation, 04_supervised, 05_evaluation
 /data       generation scripts, ground truth
 /powerbi    .pbip project (PBIR report + TMDL model), legacy .pbix, DAX notes
-/scripts    validate_dax.py (DAX vs SQL), build_report.py (PBIR pages)
+/scripts    validate_dax.py (DAX vs SQL), build_report.py (PBIR pages),
+            export_parquet.py + validate_streamlit.py (Streamlit snapshot)
+/streamlit_app  Streamlit version of the five report pages (Parquet only)
 /docs       findings write-up
 
 ## Data shape targets
@@ -607,6 +609,32 @@ contain the report pages. .gitignore excludes **/.pbi/localSettings.json
 
 Phase 6 is complete apart from polish: layout tweaks go through
 build_report.py, measure changes through the MCP + validate_dax.py.
+
+**Streamlit version (deployable on Streamlit Community Cloud).**
+streamlit_app/ mirrors the five report pages with Plotly and reads ONLY a
+Parquet snapshot in streamlit_app/data/ (2.7 MB, zstd) - no database at
+runtime. scripts/export_parquet.py writes the snapshot from Postgres, which
+stays the single source of truth (the Parquet is a read-only deployment
+artefact, never read back into the pipeline). The export pseudonymises
+posters ('Poster NN' by ROW_NUMBER() OVER (ORDER BY employee_key) - stable,
+not rank-revealing) and never selects employee_name/employee_id; it also
+leaves out eval_method_score so the app can't report a stored figure.
+All metric logic is in streamlit_app/metrics.py (pure pandas, no
+Streamlit import), mirroring the DAX measures: every scoring function takes
+ONE method name and raises on a list; score is never read; per-type recall
+is pair-level; Scoreboards A and B are separate calls. common.py holds the
+@st.cache_data loader, colours and the single-select method picker.
+scripts/validate_streamlit.py imports the SAME SQL constants from
+validate_dax.py (whose execution is now under main(), so importing it runs
+nothing) and checks every metrics.py function: 842 checks - header counts
+and ratios for 16 methods, 16 x 8 pair recall + precision_vs_slice, tiers,
+operating point, layer attribution + pairs, workload per period and per
+poster, scoreboard membership, the single-method guard - 0 mismatches,
+counts exact and ratios to 3 dp. Mutation-tested (a wrong FP-minute
+constant and one off-by-one pair are both caught). A match also proves the
+snapshot is current; re-export if it fails after a data change. Pinned
+deps in streamlit_app/requirements.txt (Python 3.14.6 locally). Deploy:
+main file streamlit_app/app.py.
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
