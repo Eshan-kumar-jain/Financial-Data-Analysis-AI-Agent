@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import metrics
-from common import BLUE, data, method_picker, style
+from common import BLUE, data, method_picker, show
 
 d = data()
 st.title("Overview")
@@ -31,7 +31,7 @@ with left:
         hovertemplate="%{y}: %{x:.3f}<br>%{customdata[0]} of %{customdata[1]} pairs<extra></extra>"))
     fig.update_layout(title="Recall by error type")
     fig.update_xaxes(range=[0, 1.12], title=None)
-    st.plotly_chart(style(fig, 420), width="stretch")
+    show(fig, 420)
     st.caption("Pair-level: an entry carrying two error types counts once for each.")
 with right:
     by_tier = metrics.pair_recall(d, method, by="detectability").set_index("detectability")
@@ -42,7 +42,7 @@ with right:
         hovertemplate="%{y}: %{x:.3f}<extra></extra>"))
     fig.update_layout(title="Recall by detectability tier")
     fig.update_xaxes(range=[0, 1.15], title=None)
-    st.plotly_chart(style(fig, 240), width="stretch")
+    show(fig, 240)
     st.markdown(
         "**What to read here.** For the final system, seven of eight error types are caught at 0.79 or "
         "better. *Backdated* is the gap: 0.26 against a measured design ceiling of 0.84. The features that "

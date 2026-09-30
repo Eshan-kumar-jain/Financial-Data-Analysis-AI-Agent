@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import metrics
-from common import BLUE, ORANGE, data, method_picker, style
+from common import BLUE, ORANGE, data, method_picker, show
 
 d = data()
 st.title("Review workload - what an analyst would face")
@@ -25,18 +25,19 @@ def stacked(df, x, y, orientation, title, height):
                     hovertemplate=f"%{{{'y' if orientation == 'h' else 'x'}}}<br>{name}: "
                                   f"%{{{'x' if orientation == 'h' else 'y'}:,}}<extra></extra>")
     fig.update_layout(title=title, barmode="stack", bargap=0.3)
-    return style(fig, height)
+    fig.update_layout(height=height)
+    return fig
 
 
 left, right = st.columns([3, 2])
 with left:
     per = metrics.workload(d, method, by="fiscal_period").sort_values("fiscal_period")
-    st.plotly_chart(stacked(per, "y", "x", "v", "Flags per fiscal period", 440), width="stretch")
+    show(stacked(per, "y", "x", "v", "Flags per fiscal period", 440))
 with right:
     top = metrics.workload(d, method, by="poster").sort_values("flags", ascending=False).head(15)
     fig = stacked(top, "x", "y", "h", "Flags by poster (top 15)", 440)
     fig.update_yaxes(autorange="reversed")
-    st.plotly_chart(fig, width="stretch")
+    show(fig)
     st.caption("Top 15 of 39 posters make 89% of entries.")
 
 st.info("Posters are pseudonymised (Poster 01-40) at export - no employee name is in this app's data. "

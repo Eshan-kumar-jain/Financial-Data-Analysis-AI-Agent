@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import metrics
-from common import BLUE, ORANGE, data, heatmap, style
+from common import BLUE, ORANGE, data, heatmap, show
 
 d = data()
 st.title("Layered detection - who catches what")
@@ -23,7 +23,7 @@ with left:
     fig.update_layout(title=f"Flags credited to each layer (sum: {la['first_catch_flags'].sum():,} flags, "
                             f"{la['first_catch_tp'].sum():,} TP)", barmode="group", bargap=0.35)
     fig.update_yaxes(autorange="reversed")
-    st.plotly_chart(style(fig, 340), width="stretch")
+    show(fig, 340)
 with right:
     overlap = fin["flags"] - la["unique_flags"].sum()
     st.markdown(f"**What removing a layer would cost** - only {overlap} of {fin['flags']:,} flags are "
@@ -36,7 +36,6 @@ with right:
 
 lp = metrics.layer_pairs(d).pivot(index="layer", columns="error_type", values="first_catch_pairs")
 lp = lp.reindex(la["layer"])
-st.plotly_chart(heatmap(lp, "Error pairs caught first, by layer and error type", fmt="d"),
-                width="stretch")
+show(heatmap(lp, "Error pairs caught first, by layer and error type", fmt="d"))
 st.caption("Each layer owns different error types: the model catches none of unbalanced, duplicate or "
            "unmatched_bank first.")

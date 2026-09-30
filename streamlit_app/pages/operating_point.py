@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import metrics
-from common import BLUE, ORANGE, data, style
+from common import BLUE, ORANGE, data, show
 
 d = data()
 op = metrics.operating_point(d)
@@ -40,13 +40,13 @@ with left:
     fig.update_layout(title="Precision and recall across the threshold grid (XGBoost alone)",
                       hovermode="x unified")
     fig.update_yaxes(range=[0, 1.02])
-    st.plotly_chart(style(band(fig), 470), width="stretch")
+    show(band(fig), 470)
 with right:
     fig = go.Figure(go.Scatter(x=sw["threshold"], y=sw["analyst_hours_per_month"], line=dict(color=BLUE, width=2),
                                hovertemplate="threshold %{x:.2f}: %{y:.1f} h/month<extra></extra>"))
     fig.update_layout(title="Review workload (analyst hours / month)")
-    st.plotly_chart(style(band(fig), 225), width="stretch")
+    show(band(fig), 225)
     fig = go.Figure(go.Scatter(x=sw["threshold"], y=sw["expected_cost_minutes"], line=dict(color=ORANGE, width=2),
                                hovertemplate="threshold %{x:.2f}: %{y:,.0f}<extra></extra>"))
     fig.update_layout(title=f"Expected cost (FP-equivalents) at {op['cost_fn_fp_ratio']:.0f}:1")
-    st.plotly_chart(style(band(fig), 225), width="stretch")
+    show(band(fig), 225)

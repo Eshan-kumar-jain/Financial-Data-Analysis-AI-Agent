@@ -1,7 +1,7 @@
 import streamlit as st
 
 import metrics
-from common import data, heatmap
+from common import data, heatmap, show
 
 d = data()
 st.title("Method comparison - blind vs labelled")
@@ -29,7 +29,6 @@ with right:
     board("B")
     st.caption("Trained on labels. Logistic regression's recall is bought with an 18% flag rate.")
 
-st.plotly_chart(heatmap(metrics.recall_matrix(d), "Recall by method and error type", zmax=1),
-                width="stretch")
+show(heatmap(metrics.recall_matrix(d), "Recall by method and error type", zmax=1))
 st.caption("Blind methods are amount detectors; models miss what they have no feature for "
            "(unbalanced, duplicate, unmatched_bank).")
