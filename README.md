@@ -28,6 +28,8 @@ The two columns differ only by the three SQL layers. Those layers add 333 flags,
 
 ## Key findings
 
+*Full write-up, with the reasoning behind each finding: [docs/findings.md](docs/findings.md).*
+
 1. **A data leak was found and fixed, and another was designed out from the start.** The structuring error routine appended `" (split n/m)"` to the entry description. Because the models could read `description_length`, they scored 1.000 recall on structuring, a "hard" error type, and `description_length` ranked #3 in SHAP importance. After removing the suffix and regenerating the data with the same seed, structuring recall fell to 0.864 / 0.682 / 0.868 (logistic regression / random forest / XGBoost). Separately, every history-based feature, including the per-account amount z-score, is computed with an expanding window ordered by posting time. That way a training-period entry can never see test-period amounts.
 2. **Cross-checking Power BI against SQL found a bug in the stored evaluation table.** Validating the DAX measures against SQL showed the stored per-error-type scoreboard reporting reconciliation recall of **1.037** (85 caught out of 82). The cause was a pandas index lookup that counted entries carrying two error labels twice. The notebook's own consistency check had missed it because it never read those rows back. The figures reported in the notebook were unaffected; the table was fixed, and the check now covers every per-slice row.
 3. **Bank reconciliation needs no labels to be almost exact.** Treating "no bank transaction within one cent and 0–3 days" as the flag gives **precision 1.000 and recall 0.988** on unmatched bank items. Every model scored 0.171 or lower on the same error type.
