@@ -1,5 +1,7 @@
 # Financial anomaly detection on journal entries
 
+**Live demo:** https://financial-data-analysis-ai-agent.streamlit.app/
+
 Posting errors and anomalous transactions in a general ledger are rare, varied, and expensive to miss, and no single detection method catches them all. This project seeds eight kinds of error into ~114k synthetic journal entries and evaluates SQL rules, statistical and unsupervised methods, bank reconciliation and supervised models against that ground truth, in PostgreSQL, Python and Power BI.
 
 ## Run locally

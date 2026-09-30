@@ -633,8 +633,27 @@ poster, scoreboard membership, the single-method guard - 0 mismatches,
 counts exact and ratios to 3 dp. Mutation-tested (a wrong FP-minute
 constant and one off-by-one pair are both caught). A match also proves the
 snapshot is current; re-export if it fails after a data change. Pinned
-deps in streamlit_app/requirements.txt (Python 3.14.6 locally). Deploy:
-main file streamlit_app/app.py.
+deps in streamlit_app/requirements.txt (Python 3.14.6 locally).
+
+Deployed on Streamlit Community Cloud:
+https://financial-data-analysis-ai-agent.streamlit.app/ - repo
+Eshan-kumar-jain/Financial-Data-Analysis-AI-Agent, branch main, main
+file streamlit_app/app.py, Python 3.14 (the same pins were also verified
+on 3.13 in a throwaway uv env, 842/842, if 3.14 is ever unavailable). No
+secrets needed - the app never connects to a database. Every push to main
+redeploys it automatically.
+
+**The deployed app only sees the committed Parquet snapshot.** Whenever
+Postgres results change (notebook 05 re-run, data regenerated, a method
+changed), run scripts/export_parquet.py, then validate_streamlit.py (0
+mismatches), then commit and push streamlit_app/data/*.parquet - until
+then the live app keeps showing the old numbers.
+
+Tooltip styling lives in one place: TOOLTIP / style_fig() in
+streamlit_app/common.py, and every chart renders through show() (no page
+calls st.plotly_chart directly). All three parts are set explicitly -
+setting only bgcolor once let st.plotly_chart's theme="streamlit" supply
+light text in dark mode (white box, light-grey text).
 
 ## Phase plan
 - Phase 2 - feature table in SQL (window functions off journal_header/
